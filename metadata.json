@@ -1,6 +1,6 @@
 {
-  "name": "Tumpang Shop — Pasar Lokal, Pilihan Hebat",
-  "description": "Tumpang Shop — marketplace produk lokal, kebutuhan harian, dan karya UMKM Indonesia.",
+  "name": "Tumpang Shop — Produk Pilihan & Berkualitas",
+  "description": "Tumpang Shop — marketplace belanja online untuk aneka produk pilihan dan berkualitas.",
   "permissions": [],
   "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

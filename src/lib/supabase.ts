@@ -1,6 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { initialProducts, initialCategories, initialStoreConfig } from '../data/mockData';
-import { Product, Category, StoreConfig, Order, UserProfile, ProductReview, AffiliateApplication } from '../types';
+import { Product, Category, StoreConfig, Order, UserProfile, ProductReview, AffiliateApplication, AffiliateCampaign } from '../types';
 
 const env = (import.meta as any).env || {};
 const supabaseUrl = env.VITE_SUPABASE_URL || '';
@@ -29,27 +29,62 @@ export const getSupabaseConfigStatus = () => {
   };
 };
 
+export const ADMIN_PRIMARY_EMAIL = 'tumpanggo@gmail.com';
+
 // Local storage key constants for robust standalone operation
 const STORAGE_KEYS = {
-  PRODUCTS: 'tumpang_shop_products_v2',
-  CATEGORIES: 'tumpang_shop_categories_v2',
-  CONFIG: 'tumpang_shop_config_v2',
+  PRODUCTS: 'tumpang_shop_products_v3',
+  CATEGORIES: 'tumpang_shop_categories_v3',
+  CONFIG: 'tumpang_shop_config_v3',
   ORDERS: 'tumpang_shop_orders_v2',
   USER: 'tumpang_shop_current_user_v2',
+  ADMIN_AUTH: 'tumpang_shop_admin_auth_v1',
   REVIEWS: 'tumpang_shop_reviews_v2',
-  AFFILIATES: 'tumpang_shop_affiliates_v1'
+  AFFILIATES: 'tumpang_shop_affiliates_v1',
+  CAMPAIGNS: 'tumpang_shop_campaigns_v1'
 };
+
+const DUMMY_CATEGORY_IDS = new Set([
+  'cat-sembako',
+  'cat-sayur-buah',
+  'cat-umkm-khas',
+  'cat-lauk-daging',
+  'cat-snack-minuman'
+]);
+
+const DUMMY_PRODUCT_IDS = new Set([
+  'prod-beras-pandan',
+  'prod-apel-manalagi',
+  'prod-kopi-dampit',
+  'prod-keripik-tempe',
+  'prod-minyak-goreng',
+  'prod-sayur-paket-sop',
+  'prod-madu-murni',
+  'prod-telur-ayam'
+]);
 
 // --- CATEGORIES ---
 export const getStoredCategories = (): Category[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
     if (!raw) {
+      // Migrate only custom user-added categories from v2, ignoring dummy demo categories
+      const oldRaw = localStorage.getItem('tumpang_shop_categories_v2');
+      if (oldRaw) {
+        try {
+          const oldList: Category[] = JSON.parse(oldRaw);
+          const customCategories = oldList.filter(c => !DUMMY_CATEGORY_IDS.has(c.id));
+          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(customCategories));
+          return customCategories;
+        } catch {}
+      }
       localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(initialCategories));
       return initialCategories;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : initialCategories;
+    return Array.isArray(parsed) 
+      ? parsed.filter((c: Category) => !DUMMY_CATEGORY_IDS.has(c.id)) 
+      : initialCategories;
   } catch {
     return initialCategories;
   }
@@ -90,11 +125,23 @@ export const getStoredProducts = (): Product[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
     if (!raw) {
+      // Migrate only custom user-added products from v2, ignoring dummy demo items
+      const oldRaw = localStorage.getItem('tumpang_shop_products_v2');
+      if (oldRaw) {
+        try {
+          const oldList: Product[] = JSON.parse(oldRaw);
+          const customProducts = oldList.filter(p => !DUMMY_PRODUCT_IDS.has(p.id));
+          localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(customProducts));
+          return customProducts;
+        } catch {}
+      }
       localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(initialProducts));
       return initialProducts;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : initialProducts;
+    return Array.isArray(parsed) 
+      ? parsed.filter((p: Product) => !DUMMY_PRODUCT_IDS.has(p.id)) 
+      : initialProducts;
   } catch {
     return initialProducts;
   }
@@ -171,7 +218,16 @@ export const getStoredConfig = (): StoreConfig => {
       localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(initialStoreConfig));
       return initialStoreConfig;
     }
-    return JSON.parse(raw);
+    const parsed: StoreConfig = JSON.parse(raw);
+    if (parsed.storeTagline && parsed.storeTagline.includes('UMKM')) {
+      parsed.storeTagline = initialStoreConfig.storeTagline;
+      localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(parsed));
+    }
+    if (typeof parsed.defaultAffiliateCommissionRate !== 'number') {
+      parsed.defaultAffiliateCommissionRate = 15;
+      localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(parsed));
+    }
+    return parsed;
   } catch {
     return initialStoreConfig;
   }
@@ -299,6 +355,83 @@ export const saveStoredUser = (user: UserProfile | null) => {
   }
 };
 
+// --- SECURE ADMIN AUTHENTICATION UTILS ---
+export interface LocalAdminAuth {
+  email: string;
+  passwordHash: string;
+  updatedAt: string;
+}
+
+export const hashPassword = async (password: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+export const getLocalAdminAuth = (): LocalAdminAuth | null => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.ADMIN_AUTH);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const setLocalAdminAuth = async (password: string): Promise<void> => {
+  const passwordHash = await hashPassword(password);
+  const authData: LocalAdminAuth = {
+    email: ADMIN_PRIMARY_EMAIL,
+    passwordHash,
+    updatedAt: new Date().toISOString()
+  };
+  localStorage.setItem(STORAGE_KEYS.ADMIN_AUTH, JSON.stringify(authData));
+};
+
+export const isLocalAdminConfigured = (): boolean => {
+  return Boolean(getLocalAdminAuth());
+};
+
+export const verifyLocalAdminPassword = async (email: string, password: string): Promise<boolean> => {
+  const stored = getLocalAdminAuth();
+  if (!stored) return false;
+
+  const cleanEmail = email.trim().toLowerCase();
+  // Allow login using the registered owner email or short username "admin"
+  if (cleanEmail !== ADMIN_PRIMARY_EMAIL && cleanEmail !== 'admin') {
+    return false;
+  }
+
+  const inputHash = await hashPassword(password);
+  return inputHash === stored.passwordHash;
+};
+
+export const verifyAdminAuthorization = async (email: string, userId?: string): Promise<boolean> => {
+  const cleanEmail = email.trim().toLowerCase();
+  if (cleanEmail === ADMIN_PRIMARY_EMAIL) {
+    return true;
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('admin_users')
+        .select('id, role')
+        .eq('email', cleanEmail)
+        .maybeSingle();
+
+      if (!error && data && (data.role === 'admin' || data.role === 'superadmin')) {
+        return true;
+      }
+    } catch (err) {
+      console.warn('Backend admin verification check:', err);
+    }
+  }
+
+  return false;
+};
+
 // --- REVIEWS ---
 export const getStoredReviews = (): ProductReview[] => {
   try {
@@ -387,6 +520,74 @@ export const saveStoredAffiliate = (app: AffiliateApplication): AffiliateApplica
   }
 
   return app;
+};
+
+// --- AFFILIATE CAMPAIGNS ---
+export const getStoredCampaigns = (): AffiliateCampaign[] => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.CAMPAIGNS);
+    if (raw) return JSON.parse(raw);
+    return [];
+  } catch {
+    return [];
+  }
+};
+
+export const saveStoredCampaigns = (campaigns: AffiliateCampaign[]): void => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.CAMPAIGNS, JSON.stringify(campaigns));
+  } catch (err) {
+    console.error('Failed to save campaigns locally', err);
+  }
+
+  if (supabase) {
+    (async () => {
+      try {
+        for (const c of campaigns) {
+          await supabase.from('affiliate_campaigns').upsert({
+            id: c.id,
+            name: c.name,
+            description: c.description,
+            product_ids: c.productIds,
+            commission_rate: c.commissionRate,
+            start_date: c.startDate,
+            end_date: c.endDate,
+            status: c.status,
+            budget_limit: c.budgetLimit,
+            max_orders: c.maxOrders,
+            created_at: c.createdAt,
+            updated_at: c.updatedAt
+          });
+        }
+      } catch (err) {
+        console.warn('Supabase campaigns sync warning:', err);
+      }
+    })();
+  }
+};
+
+export const saveStoredCampaign = (campaign: AffiliateCampaign): AffiliateCampaign => {
+  const current = getStoredCampaigns();
+  const exists = current.some(c => c.id === campaign.id);
+  const updated = exists ? current.map(c => c.id === campaign.id ? campaign : c) : [campaign, ...current];
+  saveStoredCampaigns(updated);
+  return campaign;
+};
+
+export const deleteStoredCampaign = (campaignId: string): void => {
+  const current = getStoredCampaigns();
+  const updated = current.filter(c => c.id !== campaignId);
+  saveStoredCampaigns(updated);
+
+  if (supabase) {
+    (async () => {
+      try {
+        await supabase.from('affiliate_campaigns').delete().eq('id', campaignId);
+      } catch (err) {
+        console.warn('Supabase campaign delete warning:', err);
+      }
+    })();
+  }
 };
 
 // --- PRODUCT IMAGES STORAGE ---

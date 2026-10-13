@@ -44,7 +44,7 @@ export default function Navbar({
                 <span className="text-lg font-black tracking-tight text-slate-900">TUMPANG</span>
                 <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-orange-100 text-[#FE8A00] uppercase tracking-wider">SHOP</span>
               </div>
-              <p className="text-[10px] font-medium text-slate-500 hidden sm:block">Pasar Lokal & UMKM Malang</p>
+              <p className="text-[10px] font-medium text-slate-500 hidden sm:block">Produk Pilihan & Berkualitas</p>
             </div>
           </div>
 
@@ -56,7 +56,7 @@ export default function Navbar({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Cari beras, kopi dampit, sayur segar, keripik tempe..."
+                placeholder="Cari produk pilihan dan kebutuhan Anda..."
                 className="w-full pl-10 pr-4 py-2 text-sm bg-slate-100/80 focus:bg-white rounded-full border border-transparent focus:border-[#FE8A00] focus:outline-hidden transition-all text-slate-800 placeholder-slate-400"
               />
             </div>
@@ -76,19 +76,6 @@ export default function Navbar({
               </button>
             )}
 
-            {/* Admin Switch */}
-            <button
-              onClick={onToggleAdminView}
-              className={`flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors ${
-                isAdminView
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-              title="Dashboard Admin Toko"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span className="hidden sm:inline">{isAdminView ? 'Mode Belanja' : 'Admin'}</span>
-            </button>
 
             {/* User Profile / Login */}
             <button
@@ -129,7 +116,7 @@ export default function Navbar({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Cari produk lokal atau kebutuhan harian..."
+                placeholder="Cari produk pilihan dan kebutuhan Anda..."
                 className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-slate-100 rounded-full border border-transparent focus:border-emerald-600 focus:bg-white focus:outline-hidden text-slate-800"
               />
             </div>

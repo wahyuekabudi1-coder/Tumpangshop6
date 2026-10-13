@@ -1,7 +1,19 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { Product, Category, Order, StoreConfig, AffiliateApplication, ProductVariation, ProductVariationOption } from '../types';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+import { 
+  Product, Category, Order, StoreConfig, AffiliateApplication, 
+  ProductVariation, ProductVariationOption, UserProfile,
+  AffiliateCampaign, CampaignStatus, CampaignConflict, OrderAffiliateSnapshot
+} from '../types';
 import { getCategoryPhotoAuto } from '../data/mockData';
 import { uploadProductImageToStorage, getSupabaseConfigStatus } from '../lib/supabase';
+import { 
+  getCampaignPerformance, detectCampaignConflicts, isCampaignActiveAt, 
+  getEffectiveProductCommission, syncOrderAffiliateStatus 
+} from '../lib/commissionCalculator';
+import AdminOrderDetailPage from './admin/AdminOrderDetailPage';
+import AdminCampaignFormPage from './admin/AdminCampaignFormPage';
+import AdminCustomerDetailPage from './admin/AdminCustomerDetailPage';
+import AdminAffiliateDetailPage from './admin/AdminAffiliateDetailPage';
 import { 
   Package, ShoppingBag, TrendingUp, AlertTriangle, Plus, Trash2, 
   Edit3, Check, X, Store, Settings, Truck, DollarSign, Filter, Search,
@@ -9,7 +21,8 @@ import {
   AlertCircle, Upload, Star, Loader2, Users, CreditCard, BarChart3,
   ChevronRight, ArrowLeft, Download, RefreshCw, Eye, ExternalLink,
   ChevronDown, CheckSquare, Square, MoreHorizontal, ArrowUpDown, ShieldCheck,
-  Calendar, Phone, Mail, MapPin, Percent, HelpCircle
+  Calendar, Phone, Mail, MapPin, Percent, HelpCircle, LogOut, Flame,
+  Clock, Tag, Play, CheckCircle, PauseCircle, StopCircle, Award
 } from 'lucide-react';
 
 export interface AdminDashboardProps {
@@ -18,12 +31,16 @@ export interface AdminDashboardProps {
   orders: Order[];
   storeConfig: StoreConfig;
   affiliates: AffiliateApplication[];
+  campaigns?: AffiliateCampaign[];
+  currentUser?: UserProfile | null;
   onUpdateProducts: (products: Product[]) => void;
   onUpdateOrders: (orders: Order[]) => void;
   onUpdateCategories: (categories: Category[]) => void;
   onUpdateConfig: (config: StoreConfig) => void;
   onUpdateAffiliates?: (affiliates: AffiliateApplication[]) => void;
+  onUpdateCampaigns?: (campaigns: AffiliateCampaign[]) => void;
   onBackToCustomer: () => void;
+  onLogout?: () => void;
 }
 
 // Navigation Structure Types
@@ -38,67 +55,55 @@ export type AdminTab =
   | 'reports' 
   | 'settings';
 
+export type AdminViewMode = 
+  | 'list' 
+  | 'product_new' 
+  | 'product_edit' 
+  | 'category_new' 
+  | 'category_edit' 
+  | 'order_detail'
+  | 'campaign_new'
+  | 'campaign_edit'
+  | 'customer_detail'
+  | 'affiliate_detail';
+
 export default function AdminDashboard({
   products,
   categories,
   orders,
   storeConfig,
   affiliates = [],
+  campaigns = [],
+  currentUser,
   onUpdateProducts,
   onUpdateOrders,
   onUpdateCategories,
   onUpdateConfig,
   onUpdateAffiliates,
-  onBackToCustomer
+  onUpdateCampaigns,
+  onBackToCustomer,
+  onLogout
 }: AdminDashboardProps) {
-  // Navigation & Sub-views (Standalone Pages with URL synchronization)
-  const [activeTab, setActiveTab] = useState<AdminTab>(() => {
-    const path = window.location.pathname;
-    if (path.startsWith('/admin/categories')) return 'categories';
-    if (path.startsWith('/admin/orders')) return 'orders';
-    if (path.startsWith('/admin/payments')) return 'payments';
-    if (path.startsWith('/admin/customers')) return 'customers';
-    if (path.startsWith('/admin/affiliates')) return 'affiliates';
-    if (path.startsWith('/admin/reports')) return 'reports';
-    if (path.startsWith('/admin/settings')) return 'settings';
-    if (path.startsWith('/admin/products')) return 'products';
-    return 'overview';
-  });
+  // Authentication Guard: Ensure only users with admin role can access dashboard
+  useEffect(() => {
+    if (currentUser && currentUser.role !== 'admin') {
+      if (onLogout) onLogout();
+      else onBackToCustomer();
+    }
+  }, [currentUser, onLogout, onBackToCustomer]);
 
-  // Dedicated Form Page Views (instead of floating modals)
-  // Mode: 'list' | 'product_new' | 'product_edit' | 'category_new' | 'category_edit' | 'order_detail'
-  const [formView, setFormView] = useState<'list' | 'product_new' | 'product_edit' | 'category_new' | 'category_edit' | 'order_detail'>(() => {
-    const path = window.location.pathname;
-    if (path === '/admin/products/new') return 'product_new';
-    if (path.startsWith('/admin/products/') && path.endsWith('/edit')) return 'product_edit';
-    if (path === '/admin/categories/new') return 'category_new';
-    if (path.startsWith('/admin/categories/') && path.endsWith('/edit')) return 'category_edit';
-    return 'list';
-  });
+  // Primary Tab and Dedicated Form/Detail Page View Modes
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const [formView, setFormView] = useState<AdminViewMode>('list');
 
+  // Active target IDs for dedicated edit and detail pages
   const [activeEditingProductId, setActiveEditingProductId] = useState<string | null>(null);
   const [activeEditingCategoryId, setActiveEditingCategoryId] = useState<string | null>(null);
+  const [activeDetailOrderId, setActiveDetailOrderId] = useState<string | null>(null);
   const [activeDetailOrder, setActiveDetailOrder] = useState<Order | null>(null);
-
-  // Sync internal admin view with Browser History & URL
-  const navigateAdmin = (tab: AdminTab, mode: 'list' | 'product_new' | 'product_edit' | 'category_new' | 'category_edit' | 'order_detail' = 'list', targetId?: string) => {
-    setActiveTab(tab);
-    setFormView(mode);
-    if (targetId) {
-      if (mode === 'product_edit') setActiveEditingProductId(targetId);
-      if (mode === 'category_edit') setActiveEditingCategoryId(targetId);
-    }
-
-    let urlPath = `/admin/${tab}`;
-    if (tab === 'overview') urlPath = '/admin';
-    if (mode === 'product_new') urlPath = '/admin/products/new';
-    if (mode === 'product_edit' && targetId) urlPath = `/admin/products/${targetId}/edit`;
-    if (mode === 'category_new') urlPath = '/admin/categories/new';
-    if (mode === 'category_edit' && targetId) urlPath = `/admin/categories/${targetId}/edit`;
-    
-    window.history.pushState({}, '', urlPath);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
+  const [activeDetailCustomerId, setActiveDetailCustomerId] = useState<string | null>(null);
+  const [activeDetailAffiliateId, setActiveDetailAffiliateId] = useState<string | null>(null);
 
   // Toast feedback state
   const [adminToast, setAdminToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -134,6 +139,10 @@ export default function AdminDashboard({
   const [pIsFeatured, setPIsFeatured] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Custom Product Commission State (Requirement 2)
+  const [pUseCustomCommission, setPUseCustomCommission] = useState(false);
+  const [pCustomCommissionRate, setPCustomCommissionRate] = useState(15);
+
   // Variations Editor State
   const [pHasVariations, setPHasVariations] = useState(false);
   const [pVariationName, setPVariationName] = useState('Pilihan / Ukuran');
@@ -156,6 +165,8 @@ export default function AdminDashboard({
       setPImages(product.images && product.images.length > 0 ? product.images : ['https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&auto=format&fit=crop&q=80']);
       setPIsActive(product.isActive);
       setPIsFeatured(product.isFeatured || false);
+      setPUseCustomCommission(product.useCustomCommission || false);
+      setPCustomCommissionRate(product.customCommissionRate !== undefined ? product.customCommissionRate : 15);
       if (product.variations && product.variations.length > 0) {
         setPHasVariations(true);
         setPVariationName(product.variations[0].name);
@@ -168,15 +179,17 @@ export default function AdminDashboard({
     } else {
       setPName('');
       setPSku(`PRD-${Date.now().toString().slice(-5)}`);
-      setPPrice(15000);
+      setPPrice(25000);
       setPOriginalPrice(undefined);
-      setPStock(25);
-      setPUnit('kg');
+      setPStock(20);
+      setPUnit('pcs');
       setPCategory(categories[0]?.id || '');
       setPDescription('');
-      setPImages(['https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&auto=format&fit=crop&q=80']);
+      setPImages(['https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=800&auto=format&fit=crop&q=80']);
       setPIsActive(true);
       setPIsFeatured(false);
+      setPUseCustomCommission(false);
+      setPCustomCommissionRate(storeConfig?.defaultAffiliateCommissionRate || 15);
       setPHasVariations(false);
       setPVariationName('Pilihan / Ukuran');
       setPVariationOptions([]);
@@ -257,6 +270,240 @@ export default function AdminDashboard({
   }, [orders]);
 
   const [customerSearch, setCustomerSearch] = useState('');
+
+  // --------------------------------------------------------------------------
+  // BROWSER HISTORY & DEDICATED FULL-PAGE ROUTING SYNCHRONIZATION
+  // --------------------------------------------------------------------------
+  const syncAdminRoute = useCallback(() => {
+    const path = window.location.pathname;
+
+    // 1. Products routes (/admin/products/new & /admin/products/:id/edit)
+    if (path === '/admin/products/new') {
+      setActiveTab('products');
+      setFormView('product_new');
+      setActiveEditingProductId(null);
+      initProductForm(null);
+      return;
+    }
+    if (path.startsWith('/admin/products/') && path.endsWith('/edit')) {
+      const prodId = path.replace('/admin/products/', '').replace('/edit', '').replace(/\/$/, '');
+      const matched = products.find(p => p.id === prodId);
+      setActiveTab('products');
+      setFormView('product_edit');
+      setActiveEditingProductId(prodId);
+      if (matched) initProductForm(matched);
+      return;
+    }
+    if (path === '/admin/products') {
+      setActiveTab('products');
+      setFormView('list');
+      return;
+    }
+
+    // 2. Categories routes (/admin/categories/new & /admin/categories/:id/edit)
+    if (path === '/admin/categories/new') {
+      setActiveTab('categories');
+      setFormView('category_new');
+      setActiveEditingCategoryId(null);
+      initCategoryForm(null);
+      return;
+    }
+    if (path.startsWith('/admin/categories/') && path.endsWith('/edit')) {
+      const catId = path.replace('/admin/categories/', '').replace('/edit', '').replace(/\/$/, '');
+      const matched = categories.find(c => c.id === catId);
+      setActiveTab('categories');
+      setFormView('category_edit');
+      setActiveEditingCategoryId(catId);
+      if (matched) initCategoryForm(matched);
+      return;
+    }
+    if (path === '/admin/categories') {
+      setActiveTab('categories');
+      setFormView('list');
+      return;
+    }
+
+    // 3. Orders routes (/admin/orders/:id)
+    if (path.startsWith('/admin/orders/')) {
+      const orderId = path.replace('/admin/orders/', '').replace(/\/$/, '').trim();
+      if (orderId && orderId !== 'list') {
+        const matched = orders.find(o => o.id === orderId || o.orderNumber === orderId);
+        setActiveTab('orders');
+        setFormView('order_detail');
+        setActiveDetailOrderId(orderId);
+        if (matched) setActiveDetailOrder(matched);
+        return;
+      }
+    }
+    if (path === '/admin/orders') {
+      setActiveTab('orders');
+      setFormView('list');
+      setActiveDetailOrderId(null);
+      setActiveDetailOrder(null);
+      return;
+    }
+
+    // 4. Affiliate Campaigns routes (/admin/affiliate/campaigns/new & :id/edit)
+    if (path === '/admin/affiliate/campaigns/new' || path === '/admin/affiliates/campaigns/new') {
+      setActiveTab('affiliates');
+      setFormView('campaign_new');
+      setEditingCampaignId(null);
+      return;
+    }
+    if (
+      (path.startsWith('/admin/affiliate/campaigns/') || path.startsWith('/admin/affiliates/campaigns/')) &&
+      path.endsWith('/edit')
+    ) {
+      const campId = path
+        .replace('/admin/affiliate/campaigns/', '')
+        .replace('/admin/affiliates/campaigns/', '')
+        .replace('/edit', '')
+        .replace(/\/$/, '');
+      setActiveTab('affiliates');
+      setFormView('campaign_edit');
+      setEditingCampaignId(campId);
+      return;
+    }
+
+    // 5. Affiliate Partner Detail (/admin/affiliate/:id)
+    if (path.startsWith('/admin/affiliate/') || path.startsWith('/admin/affiliates/')) {
+      const affId = path
+        .replace('/admin/affiliate/', '')
+        .replace('/admin/affiliates/', '')
+        .replace(/\/$/, '').trim();
+      if (affId && !['list', 'campaigns', 'applications', 'transactions', 'settings'].includes(affId)) {
+        setActiveTab('affiliates');
+        setFormView('affiliate_detail');
+        setActiveDetailAffiliateId(affId);
+        return;
+      }
+    }
+    if (path === '/admin/affiliates' || path === '/admin/affiliate') {
+      setActiveTab('affiliates');
+      setFormView('list');
+      setActiveDetailAffiliateId(null);
+      return;
+    }
+
+    // 6. Customers Detail (/admin/customers/:id)
+    if (path.startsWith('/admin/customers/')) {
+      const custId = decodeURIComponent(path.replace('/admin/customers/', '').replace(/\/$/, '')).trim();
+      if (custId && custId !== 'list') {
+        setActiveTab('customers');
+        setFormView('customer_detail');
+        setActiveDetailCustomerId(custId);
+        return;
+      }
+    }
+    if (path === '/admin/customers') {
+      setActiveTab('customers');
+      setFormView('list');
+      setActiveDetailCustomerId(null);
+      return;
+    }
+
+    // 7. General Admin Tabs
+    if (path.startsWith('/admin/payments')) {
+      setActiveTab('payments');
+      setFormView('list');
+      return;
+    }
+    if (path.startsWith('/admin/reports')) {
+      setActiveTab('reports');
+      setFormView('list');
+      return;
+    }
+    if (path.startsWith('/admin/settings')) {
+      setActiveTab('settings');
+      setFormView('list');
+      return;
+    }
+    if (path === '/admin' || path === '/admin/overview') {
+      setActiveTab('overview');
+      setFormView('list');
+      return;
+    }
+  }, [products, categories, orders, campaigns, affiliates]);
+
+  // Navigate function with direct browser URL update
+  const navigateAdmin = useCallback((
+    tab: AdminTab, 
+    mode: AdminViewMode = 'list', 
+    targetId?: string
+  ) => {
+    setActiveTab(tab);
+    setFormView(mode);
+
+    if (mode === 'product_edit' && targetId) {
+      setActiveEditingProductId(targetId);
+      const matched = products.find(p => p.id === targetId);
+      if (matched) initProductForm(matched);
+    } else if (mode === 'product_new') {
+      setActiveEditingProductId(null);
+      initProductForm(null);
+    }
+
+    if (mode === 'category_edit' && targetId) {
+      setActiveEditingCategoryId(targetId);
+      const matched = categories.find(c => c.id === targetId);
+      if (matched) initCategoryForm(matched);
+    } else if (mode === 'category_new') {
+      setActiveEditingCategoryId(null);
+      initCategoryForm(null);
+    }
+
+    if (mode === 'order_detail' && targetId) {
+      setActiveDetailOrderId(targetId);
+      const matched = orders.find(o => o.id === targetId || o.orderNumber === targetId);
+      if (matched) setActiveDetailOrder(matched);
+    } else if (mode !== 'order_detail') {
+      setActiveDetailOrderId(null);
+      setActiveDetailOrder(null);
+    }
+
+    if (mode === 'campaign_edit' && targetId) {
+      setEditingCampaignId(targetId);
+    } else if (mode === 'campaign_new') {
+      setEditingCampaignId(null);
+    }
+
+    if (mode === 'customer_detail' && targetId) {
+      setActiveDetailCustomerId(targetId);
+    } else if (mode !== 'customer_detail') {
+      setActiveDetailCustomerId(null);
+    }
+
+    if (mode === 'affiliate_detail' && targetId) {
+      setActiveDetailAffiliateId(targetId);
+    } else if (mode !== 'affiliate_detail') {
+      setActiveDetailAffiliateId(null);
+    }
+
+    let urlPath = `/admin/${tab}`;
+    if (tab === 'overview') urlPath = '/admin';
+    if (mode === 'product_new') urlPath = '/admin/products/new';
+    if (mode === 'product_edit' && targetId) urlPath = `/admin/products/${targetId}/edit`;
+    if (mode === 'category_new') urlPath = '/admin/categories/new';
+    if (mode === 'category_edit' && targetId) urlPath = `/admin/categories/${targetId}/edit`;
+    if (mode === 'order_detail' && targetId) urlPath = `/admin/orders/${targetId}`;
+    if (mode === 'campaign_new') urlPath = '/admin/affiliate/campaigns/new';
+    if (mode === 'campaign_edit' && targetId) urlPath = `/admin/affiliate/campaigns/${targetId}/edit`;
+    if (mode === 'customer_detail' && targetId) urlPath = `/admin/customers/${encodeURIComponent(targetId)}`;
+    if (mode === 'affiliate_detail' && targetId) urlPath = `/admin/affiliate/${targetId}`;
+
+    window.history.pushState({}, '', urlPath);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [products, categories, orders]);
+
+  // Synchronize route on initial mount and on browser back/forward buttons (popstate)
+  useEffect(() => {
+    syncAdminRoute();
+    const handlePopState = () => {
+      syncAdminRoute();
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [syncAdminRoute]);
 
   // --------------------------------------------------------------------------
   // METRICS & OVERVIEW CALCULATIONS
@@ -427,6 +674,10 @@ export default function AdminDashboard({
       ? pVariationOptions.reduce((acc, opt) => acc + opt.stock, 0)
       : Number(pStock);
 
+    const validatedCustomRate = pUseCustomCommission 
+      ? Math.min(100, Math.max(0, Number(pCustomCommissionRate) || 0)) 
+      : undefined;
+
     if (formView === 'product_edit' && activeEditingProductId) {
       const updated = products.map(p => {
         if (p.id === activeEditingProductId) {
@@ -444,6 +695,8 @@ export default function AdminDashboard({
             isActive: pIsActive,
             isFeatured: pIsFeatured,
             variations: variationsToSave,
+            useCustomCommission: pUseCustomCommission,
+            customCommissionRate: validatedCustomRate,
             updatedAt: new Date().toISOString()
           };
         }
@@ -466,6 +719,8 @@ export default function AdminDashboard({
         isActive: pIsActive,
         isFeatured: pIsFeatured,
         variations: variationsToSave,
+        useCustomCommission: pUseCustomCommission,
+        customCommissionRate: validatedCustomRate,
         viewCount: 0,
         salesCount: 0,
         createdAt: new Date().toISOString(),
@@ -619,7 +874,8 @@ export default function AdminDashboard({
 
     const updated = orders.map(o => {
       if (o.id === orderId) {
-        return { ...o, orderStatus: newStatus, updatedAt: new Date().toISOString() };
+        const withStatus = { ...o, orderStatus: newStatus, updatedAt: new Date().toISOString() };
+        return syncOrderAffiliateStatus(withStatus);
       }
       return o;
     });
@@ -630,12 +886,13 @@ export default function AdminDashboard({
   const handleUpdatePaymentStatus = (orderId: string, newStatus: Order['paymentStatus']) => {
     const updated = orders.map(o => {
       if (o.id === orderId) {
-        return { 
+        const withStatus = { 
           ...o, 
           paymentStatus: newStatus, 
           paidAt: newStatus === 'PAID' ? (o.paidAt || new Date().toISOString()) : undefined,
           updatedAt: new Date().toISOString() 
         };
+        return syncOrderAffiliateStatus(withStatus);
       }
       return o;
     });
@@ -646,7 +903,9 @@ export default function AdminDashboard({
   const handleBulkUpdateOrderStatus = (status: Order['orderStatus']) => {
     if (selectedOrderIds.length === 0) return;
     const updated = orders.map(o => 
-      selectedOrderIds.includes(o.id) ? { ...o, orderStatus: status, updatedAt: new Date().toISOString() } : o
+      selectedOrderIds.includes(o.id) 
+        ? syncOrderAffiliateStatus({ ...o, orderStatus: status, updatedAt: new Date().toISOString() }) 
+        : o
     );
     onUpdateOrders(updated);
     setSelectedOrderIds([]);
@@ -654,13 +913,96 @@ export default function AdminDashboard({
   };
 
   // --------------------------------------------------------------------------
-  // AFFILIATE ACTION HANDLERS
+  // AFFILIATE & CAMPAIGN MANAGEMENT STATE & ACTIONS
   // --------------------------------------------------------------------------
+  const [affiliateSubTab, setAffiliateSubTab] = useState<'campaigns' | 'applications' | 'transactions' | 'settings'>('campaigns');
+
+  const handleOpenCreateCampaign = () => {
+    navigateAdmin('affiliates', 'campaign_new');
+  };
+
+  const handleOpenEditCampaign = (camp: AffiliateCampaign) => {
+    navigateAdmin('affiliates', 'campaign_edit', camp.id);
+  };
+
+  const handleSaveCampaignDirect = (updatedCampaign: AffiliateCampaign) => {
+    let nextCampaigns: AffiliateCampaign[];
+    if (campaigns.some(c => c.id === updatedCampaign.id)) {
+      nextCampaigns = campaigns.map(c => c.id === updatedCampaign.id ? updatedCampaign : c);
+    } else {
+      nextCampaigns = [updatedCampaign, ...campaigns];
+    }
+
+    if (onUpdateCampaigns) {
+      onUpdateCampaigns(nextCampaigns);
+    }
+
+    // Check conflicts for alert notice
+    const detectedConflicts = detectCampaignConflicts(nextCampaigns, products);
+    if (detectedConflicts.length > 0) {
+      showToast(`Campaign disimpan. Perhatian: Ada produk bertumpuk pada campaign lain. Prioritas deterministik komisi tertinggi berlaku.`, 'info');
+    } else {
+      showToast(`Campaign "${updatedCampaign.name}" berhasil disimpan!`);
+    }
+
+    navigateAdmin('affiliates', 'list');
+  };
+
+  const handleToggleCampaignStatus = (campaignId: string) => {
+    if (!onUpdateCampaigns) return;
+    const target = campaigns.find(c => c.id === campaignId);
+    if (!target) return;
+    const nextStatus: CampaignStatus = target.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+    const updated = campaigns.map(c => c.id === campaignId ? { ...c, status: nextStatus, updatedAt: new Date().toISOString() } : c);
+    onUpdateCampaigns(updated);
+    showToast(`Status campaign "${target.name}" diubah menjadi ${nextStatus}`);
+  };
+
+  const handleEndCampaign = (campaignId: string) => {
+    if (!onUpdateCampaigns) return;
+    const target = campaigns.find(c => c.id === campaignId);
+    if (!target) return;
+    if (confirm(`Akhiri campaign "${target.name}" sekarang? Campaign tidak akan aktif lagi.`)) {
+      const updated = campaigns.map(c => c.id === campaignId ? { ...c, status: 'ENDED' as CampaignStatus, updatedAt: new Date().toISOString() } : c);
+      onUpdateCampaigns(updated);
+      showToast(`Campaign "${target.name}" telah diakhiri.`);
+    }
+  };
+
+  const handleDeleteCampaign = (campaignId: string) => {
+    if (!onUpdateCampaigns) return;
+    const target = campaigns.find(c => c.id === campaignId);
+    if (!target) return;
+    if (confirm(`Hapus campaign "${target.name}" secara permanen? Data komisi pada transaksi lama tidak akan terpengaruh.`)) {
+      const updated = campaigns.filter(c => c.id !== campaignId);
+      onUpdateCampaigns(updated);
+      showToast(`Campaign "${target.name}" telah dihapus.`);
+    }
+  };
+
   const handleUpdateAffiliateStatus = (appId: string, status: 'APPROVED' | 'PENDING') => {
     if (!onUpdateAffiliates) return;
     const updated = affiliates.map(a => a.id === appId ? { ...a, status } : a);
     onUpdateAffiliates(updated);
     showToast(`Status pendaftaran affiliate diperbarui menjadi ${status}`);
+  };
+
+  const handleUpdateCommissionPaymentStatus = (orderId: string, newCommStatus: 'PAID' | 'CANCELLED' | 'APPROVED') => {
+    const updated = orders.map(o => {
+      if (o.id === orderId && o.affiliateCommission) {
+        return {
+          ...o,
+          affiliateCommission: {
+            ...o.affiliateCommission,
+            status: newCommStatus
+          },
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return o;
+    });
+    onUpdateOrders(updated);
+    showToast(`Status komisi pesanan diperbarui menjadi ${newCommStatus}`);
   };
 
   // --------------------------------------------------------------------------
@@ -800,15 +1142,31 @@ export default function AdminDashboard({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-semibold text-slate-700 block mb-1">Kategori Produk <span className="text-rose-500">*</span></label>
-                    <select
-                      value={pCategory}
-                      onChange={(e) => setPCategory(e.target.value)}
-                      className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
-                    >
-                      {categories.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+                    {categories.length === 0 ? (
+                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 p-2 rounded-lg flex items-center justify-between gap-2">
+                        <span>Belum ada kategori.</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            initCategoryForm(null);
+                            navigateAdmin('categories', 'category_new');
+                          }}
+                          className="px-2 py-1 bg-[#FE8A00] hover:bg-[#e07b00] text-white rounded font-bold text-[10px] shrink-0"
+                        >
+                          + Buat Kategori
+                        </button>
+                      </div>
+                    ) : (
+                      <select
+                        value={pCategory}
+                        onChange={(e) => setPCategory(e.target.value)}
+                        className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
+                      >
+                        {categories.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
 
                   <div>
@@ -1014,6 +1372,73 @@ export default function AdminDashboard({
                         </table>
                       </div>
                     )}
+                  </div>
+                )}
+              </div>
+
+              {/* Card 4: Komisi Affiliate Produk (Requirement 2) */}
+              <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div>
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">4. Komisi Affiliate Produk</h2>
+                    <p className="text-[11px] text-slate-500">Tentukan apakah produk menggunakan komisi standar toko atau komisi khusus produk</p>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={pUseCustomCommission}
+                      onChange={(e) => setPUseCustomCommission(e.target.checked)}
+                      className="w-4 h-4 text-[#FE8A00] rounded focus:ring-[#FE8A00]"
+                    />
+                    <span>Komisi Khusus</span>
+                  </label>
+                </div>
+
+                {pUseCustomCommission ? (
+                  <div className="space-y-3 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-semibold text-slate-700 block mb-1">
+                          Persentase Komisi Khusus (%) <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.5"
+                            required
+                            value={pCustomCommissionRate}
+                            onChange={(e) => setPCustomCommissionRate(Math.min(100, Math.max(0, Number(e.target.value))))}
+                            className="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
+                          />
+                          <span className="absolute right-3 top-2 text-xs text-slate-400 font-bold">%</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">Nilai persentase valid: 0% hingga 100%.</p>
+                      </div>
+
+                      <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200 text-xs flex flex-col justify-center">
+                        <span className="text-slate-500 text-[11px]">Estimasi Komisi Mitra per Unit:</span>
+                        <span className="font-extrabold text-blue-700 text-base">
+                          Rp {Math.round((Number(pPrice) || 0) * (Number(pCustomCommissionRate) / 100)).toLocaleString('id-ID')}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          (Dihitung dari harga jual Rp {(Number(pPrice) || 0).toLocaleString('id-ID')})
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-600 flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-slate-800 block">Menggunakan Komisi Standar Toko</span>
+                      <span className="text-[11px] text-slate-500">
+                        Produk ini saat ini mendapatkan komisi standar <strong>{storeConfig.defaultAffiliateCommissionRate || 15}%</strong> (atau mengikuti Campaign aktif jika diikutsertakan).
+                      </span>
+                    </div>
+                    <div className="text-right shrink-0 font-bold text-emerald-700 text-xs sm:text-sm pl-3">
+                      Rp {Math.round((Number(pPrice) || 0) * ((storeConfig.defaultAffiliateCommissionRate || 15) / 100)).toLocaleString('id-ID')}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1248,7 +1673,7 @@ export default function AdminDashboard({
                 required
                 value={cName}
                 onChange={(e) => setCName(e.target.value)}
-                placeholder="Contoh: Sayuran & Buah Segar"
+                placeholder="Contoh: Elektronik & Gadget"
                 className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
               />
             </div>
@@ -1345,6 +1770,129 @@ export default function AdminDashboard({
   }
 
   // ==========================================================================
+  // RENDER: SUB-PAGE DEDICATED ORDER DETAIL (/admin/orders/:id)
+  // ==========================================================================
+  if (formView === 'order_detail') {
+    const targetOrder = activeDetailOrder || orders.find(o => o.id === activeDetailOrderId || o.orderNumber === activeDetailOrderId);
+    if (targetOrder) {
+      return (
+        <AdminOrderDetailPage
+          order={targetOrder}
+          products={products}
+          onBack={() => navigateAdmin('orders', 'list')}
+          onUpdateOrderStatus={handleUpdateOrderStatus}
+          onUpdatePaymentStatus={handleUpdatePaymentStatus}
+          onUpdateCommissionStatus={handleUpdateCommissionPaymentStatus}
+          onViewCustomer={(custKey) => navigateAdmin('customers', 'customer_detail', custKey)}
+        />
+      );
+    }
+    return (
+      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-6 text-center">
+        <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm max-w-md w-full">
+          <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
+          <h2 className="text-base font-bold text-slate-900">Pesanan Tidak Ditemukan</h2>
+          <p className="text-xs text-slate-500 mt-1 mb-5">
+            Pesanan dengan kode/ID "{activeDetailOrderId}" tidak ditemukan atau belum tercatat.
+          </p>
+          <button
+            onClick={() => navigateAdmin('orders', 'list')}
+            className="w-full py-2 bg-[#FE8A00] text-white text-xs font-bold rounded-xl shadow-xs"
+          >
+            Kembali ke Daftar Pesanan
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // RENDER: SUB-PAGE FORM FOR CAMPAIGNS (/admin/affiliate/campaigns/new & :id/edit)
+  // ==========================================================================
+  if (formView === 'campaign_new' || formView === 'campaign_edit') {
+    const targetCampaign = editingCampaignId ? campaigns.find(c => c.id === editingCampaignId) : null;
+    return (
+      <AdminCampaignFormPage
+        initialCampaign={targetCampaign}
+        products={products}
+        categories={categories}
+        existingCampaigns={campaigns}
+        onBack={() => navigateAdmin('affiliates', 'list')}
+        onSave={handleSaveCampaignDirect}
+      />
+    );
+  }
+
+  // ==========================================================================
+  // RENDER: SUB-PAGE DEDICATED CUSTOMER DETAIL (/admin/customers/:id)
+  // ==========================================================================
+  if (formView === 'customer_detail') {
+    const targetCustomer = customerList.find(c => c.phone === activeDetailCustomerId || c.name === activeDetailCustomerId);
+    if (targetCustomer) {
+      return (
+        <AdminCustomerDetailPage
+          customer={targetCustomer}
+          customerOrders={orders.filter(o => o.customerPhone === targetCustomer.phone || o.customerName === targetCustomer.name)}
+          onBack={() => navigateAdmin('customers', 'list')}
+          onViewOrder={(orderId) => navigateAdmin('orders', 'order_detail', orderId)}
+        />
+      );
+    }
+    return (
+      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-6 text-center">
+        <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm max-w-md w-full">
+          <Users className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+          <h2 className="text-base font-bold text-slate-900">Pelanggan Tidak Ditemukan</h2>
+          <p className="text-xs text-slate-500 mt-1 mb-5">
+            Data pelanggan "{activeDetailCustomerId}" tidak ditemukan dalam catatan transaksi.
+          </p>
+          <button
+            onClick={() => navigateAdmin('customers', 'list')}
+            className="w-full py-2 bg-[#FE8A00] text-white text-xs font-bold rounded-xl shadow-xs"
+          >
+            Kembali ke Direktori Pelanggan
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // RENDER: SUB-PAGE DEDICATED AFFILIATE PARTNER DETAIL (/admin/affiliate/:id)
+  // ==========================================================================
+  if (formView === 'affiliate_detail') {
+    const targetAffiliate = affiliates.find(a => a.id === activeDetailAffiliateId || a.referralCode === activeDetailAffiliateId);
+    if (targetAffiliate) {
+      return (
+        <AdminAffiliateDetailPage
+          affiliate={targetAffiliate}
+          referralOrders={orders.filter(o => o.affiliateCommission?.referralCode === targetAffiliate.referralCode || o.referralCode === targetAffiliate.referralCode)}
+          onBack={() => navigateAdmin('affiliates', 'list')}
+          onUpdateStatus={handleUpdateAffiliateStatus}
+          onViewOrder={(orderId) => navigateAdmin('orders', 'order_detail', orderId)}
+        />
+      );
+    }
+    return (
+      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-6 text-center">
+        <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm max-w-md w-full">
+          <Award className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+          <h2 className="text-base font-bold text-slate-900">Mitra Affiliate Tidak Ditemukan</h2>
+          <p className="text-xs text-slate-500 mt-1 mb-5">
+            Pendaftaran affiliate dengan ID "{activeDetailAffiliateId}" tidak ditemukan.
+          </p>
+          <button
+            onClick={() => navigateAdmin('affiliates', 'list')}
+            className="w-full py-2 bg-[#FE8A00] text-white text-xs font-bold rounded-xl shadow-xs"
+          >
+            Kembali ke Daftar Mitra
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================================
   // MAIN SELLER CENTRE LAYOUT: FIXED SIDEBAR + COMPACT HEADER + WORKSPACE
   // ==========================================================================
   return (
@@ -1374,20 +1922,42 @@ export default function AdminDashboard({
               </span>
             </div>
             <p className="text-[10px] text-slate-400 font-medium hidden sm:block">
-              Sistem Manajemen Operasional Marketplace UMKM Tumpang
+              Sistem Manajemen Operasional & Katalog Tumpang Shop
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          {currentUser && (
+            <div className="hidden md:flex flex-col text-right pr-2 border-r border-slate-200">
+              <span className="text-xs font-bold text-slate-800 flex items-center justify-end gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#FE8A00]" />
+                <span>{currentUser.fullName || 'Administrator'}</span>
+              </span>
+              <span className="text-[10px] text-slate-500 font-mono">
+                {currentUser.email}
+              </span>
+            </div>
+          )}
+
           <button
             onClick={onBackToCustomer}
             className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1.5"
-            title="Keluar dari Seller Centre ke tampilan pembeli"
+            title="Lihat Toko Publik"
           >
             <Store className="w-3.5 h-3.5 text-[#FE8A00]" />
             <span className="hidden sm:inline">Lihat Toko Publik</span>
           </button>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="px-3 py-1.5 rounded-lg border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-semibold transition-colors flex items-center gap-1.5"
+              title="Keluar dari sesi Admin"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Keluar</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -1585,7 +2155,7 @@ export default function AdminDashboard({
             <div className="space-y-6 max-w-7xl mx-auto">
               <div>
                 <h1 className="text-lg font-bold text-slate-900">Ringkasan Operasional Marketplace</h1>
-                <p className="text-xs text-slate-500">Pantau performa penjualan, pesanan masuk, dan kesehatan inventaris UMKM</p>
+                <p className="text-xs text-slate-500">Pantau performa penjualan, pesanan masuk, dan kesehatan inventaris produk</p>
               </div>
 
               {/* KPI Strip */}
@@ -1741,7 +2311,7 @@ export default function AdminDashboard({
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <div>
                   <h1 className="text-lg font-bold text-slate-900">Katalog Produk</h1>
-                  <p className="text-xs text-slate-500">Kelola informasi, harga, stok, dan galeri foto produk UMKM</p>
+                  <p className="text-xs text-slate-500">Kelola informasi, harga, stok, dan galeri foto produk pilihan</p>
                 </div>
                 <button
                   onClick={handleOpenCreateProduct}
@@ -1869,6 +2439,7 @@ export default function AdminDashboard({
                         <th className="py-3 px-3">Produk & SKU</th>
                         <th className="py-3 px-3">Kategori</th>
                         <th className="py-3 px-3">Harga</th>
+                        <th className="py-3 px-3">Komisi Affiliate</th>
                         <th className="py-3 px-3">Stok</th>
                         <th className="py-3 px-3">Foto</th>
                         <th className="py-3 px-3">Status</th>
@@ -1878,13 +2449,14 @@ export default function AdminDashboard({
                     <tbody className="divide-y divide-slate-100">
                       {paginatedProducts.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="py-12 text-center text-slate-400">
+                          <td colSpan={9} className="py-12 text-center text-slate-400">
                             Tidak ada produk yang cocok dengan pencarian atau filter.
                           </td>
                         </tr>
                       ) : (
                         paginatedProducts.map(prod => {
                           const isSelected = selectedProductIds.includes(prod.id);
+                          const effCommission = getEffectiveProductCommission(prod, storeConfig, campaigns, new Date(), orders);
                           return (
                             <tr key={prod.id} className={`hover:bg-slate-50/60 transition-colors ${isSelected ? 'bg-orange-50/20' : ''}`}>
                               <td className="py-3 px-3">
@@ -1926,6 +2498,22 @@ export default function AdminDashboard({
                               <td className="py-3 px-3 font-bold text-slate-900">
                                 Rp {prod.price.toLocaleString('id-ID')}
                                 <span className="text-[10px] text-slate-400 font-normal"> / {prod.unit}</span>
+                              </td>
+                              <td className="py-3 px-3">
+                                {effCommission.appliedType === 'campaign' ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-orange-100 text-[#FE8A00] border border-orange-200">
+                                    <Flame className="w-3 h-3" />
+                                    <span>Campaign {effCommission.ratePercent}%</span>
+                                  </span>
+                                ) : effCommission.appliedType === 'product_custom' ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                                    <span>Khusus {effCommission.ratePercent}%</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-700">
+                                    <span>Standar {effCommission.ratePercent}%</span>
+                                  </span>
+                                )}
                               </td>
                               <td className="py-3 px-3">
                                 <span className={`font-extrabold ${
@@ -2233,102 +2821,6 @@ export default function AdminDashboard({
                 )}
               </div>
 
-              {/* Order Detail Modal / Panel */}
-              {activeDetailOrder && (
-                <div className="bg-white border-2 border-[#FE8A00] rounded-xl p-5 shadow-sm space-y-4 animate-in fade-in">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div>
-                      <span className="text-xs font-bold text-[#FE8A00] uppercase tracking-wider">Rincian Lengkap Pesanan</span>
-                      <h3 className="text-base font-extrabold text-slate-900">{activeDetailOrder.orderNumber}</h3>
-                    </div>
-                    <button
-                      onClick={() => setActiveDetailOrder(null)}
-                      className="p-1 rounded-md hover:bg-slate-100 text-slate-500"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-                    <div>
-                      <div className="text-[11px] text-slate-400 uppercase font-bold">Pelanggan</div>
-                      <div className="font-bold text-slate-800 mt-0.5">{activeDetailOrder.customerName}</div>
-                      <div className="text-slate-500">{activeDetailOrder.customerPhone}</div>
-                      {activeDetailOrder.customerEmail && <div className="text-slate-500">{activeDetailOrder.customerEmail}</div>}
-                    </div>
-
-                    <div>
-                      <div className="text-[11px] text-slate-400 uppercase font-bold">Alamat Kirim</div>
-                      <div className="text-slate-800 mt-0.5 font-medium">{activeDetailOrder.deliveryAddress}</div>
-                      <div className="text-slate-500 text-[11px]">Kecamatan: {activeDetailOrder.customerDistrict}</div>
-                      {activeDetailOrder.deliveryNotes && (
-                        <div className="text-amber-800 text-[11px] italic mt-0.5">Catatan: {activeDetailOrder.deliveryNotes}</div>
-                      )}
-                    </div>
-
-                    <div>
-                      <div className="text-[11px] text-slate-400 uppercase font-bold">Metode & Waktu</div>
-                      <div className="text-slate-800 mt-0.5 font-medium">Pengiriman: {activeDetailOrder.shippingMethod}</div>
-                      <div className="text-slate-500 text-[11px]">Dibuat: {new Date(activeDetailOrder.createdAt).toLocaleString('id-ID')}</div>
-                    </div>
-                  </div>
-
-                  {/* Items list */}
-                  <div className="border border-slate-200 rounded-lg overflow-hidden">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                        <tr>
-                          <th className="py-2 px-3">Item Produk</th>
-                          <th className="py-2 px-3">SKU</th>
-                          <th className="py-2 px-3">Harga</th>
-                          <th className="py-2 px-3">Qty</th>
-                          <th className="py-2 px-3 text-right">Subtotal</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {activeDetailOrder.items.map((item, idx) => (
-                          <tr key={idx}>
-                            <td className="py-2 px-3">
-                              <span className="font-semibold text-slate-900">{item.name}</span>
-                              {item.variationInfo && (
-                                <span className="text-[11px] text-slate-400 block font-normal">{item.variationInfo}</span>
-                              )}
-                            </td>
-                            <td className="py-2 px-3 font-mono text-[11px] text-slate-500">{item.sku}</td>
-                            <td className="py-2 px-3">Rp {item.price.toLocaleString('id-ID')}</td>
-                            <td className="py-2 px-3 font-bold">{item.quantity} {item.unit}</td>
-                            <td className="py-2 px-3 text-right font-bold text-slate-900">
-                              Rp {item.subtotal.toLocaleString('id-ID')}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="flex justify-end text-xs">
-                    <div className="w-64 space-y-1">
-                      <div className="flex justify-between text-slate-500">
-                        <span>Subtotal Produk:</span>
-                        <span>Rp {activeDetailOrder.subtotal.toLocaleString('id-ID')}</span>
-                      </div>
-                      <div className="flex justify-between text-slate-500">
-                        <span>Ongkos Kirim:</span>
-                        <span>Rp {activeDetailOrder.shippingCost.toLocaleString('id-ID')}</span>
-                      </div>
-                      <div className="flex justify-between text-slate-500">
-                        <span>Biaya Layanan:</span>
-                        <span>Rp {activeDetailOrder.serviceFee.toLocaleString('id-ID')}</span>
-                      </div>
-                      <div className="flex justify-between font-extrabold text-sm text-slate-900 pt-1 border-t border-slate-200">
-                        <span>Total Pembayaran:</span>
-                        <span className="text-emerald-700">Rp {activeDetailOrder.total.toLocaleString('id-ID')}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Orders Table */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
                 <div className="overflow-x-auto">
@@ -2382,7 +2874,13 @@ export default function AdminDashboard({
                                 className="rounded text-[#FE8A00] focus:ring-[#FE8A00]"
                               />
                             </td>
-                            <td className="py-3 px-3 font-bold text-slate-900">{o.orderNumber}</td>
+                            <td 
+                              className="py-3 px-3 font-bold text-slate-900 cursor-pointer hover:text-[#FE8A00] transition-colors"
+                              onClick={() => navigateAdmin('orders', 'order_detail', o.id)}
+                              title="Buka rincian lengkap pesanan"
+                            >
+                              {o.orderNumber}
+                            </td>
                             <td className="py-3 px-3">
                               <div className="font-semibold text-slate-800">{o.customerName}</div>
                               <div className="text-[11px] text-slate-400 font-mono">{o.customerPhone}</div>
@@ -2429,10 +2927,11 @@ export default function AdminDashboard({
                             </td>
                             <td className="py-3 px-3 text-right">
                               <button
-                                onClick={() => setActiveDetailOrder(o)}
-                                className="px-2 py-1 text-[11px] font-bold text-[#FE8A00] hover:bg-orange-50 rounded transition-colors"
+                                onClick={() => navigateAdmin('orders', 'order_detail', o.id)}
+                                className="px-2.5 py-1 text-[11px] font-bold text-[#FE8A00] hover:bg-orange-50 rounded transition-colors inline-flex items-center gap-1"
                               >
-                                Rincian
+                                <span>Rincian</span>
+                                <ChevronRight className="w-3 h-3" />
                               </button>
                             </td>
                           </tr>
@@ -2592,28 +3091,45 @@ export default function AdminDashboard({
                       <th className="py-3 px-3">Wilayah / Kecamatan</th>
                       <th className="py-3 px-3">Total Pesanan</th>
                       <th className="py-3 px-3">Total Belanja</th>
-                      <th className="py-3 px-3 text-right">Pesanan Terakhir</th>
+                      <th className="py-3 px-3">Pesanan Terakhir</th>
+                      <th className="py-3 px-3 text-right">Tindakan</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredCustomers.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-12 text-center text-slate-400">
+                        <td colSpan={7} className="py-12 text-center text-slate-400">
                           Belum ada data pelanggan yang tercatat dari pesanan.
                         </td>
                       </tr>
                     ) : (
                       filteredCustomers.map((cust, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50/60">
-                          <td className="py-3 px-3 font-bold text-slate-900">{cust.name}</td>
+                        <tr 
+                          key={idx} 
+                          className="hover:bg-slate-50/60 cursor-pointer transition-colors"
+                          onClick={() => navigateAdmin('customers', 'customer_detail', cust.phone || cust.name)}
+                        >
+                          <td className="py-3 px-3 font-bold text-slate-900 hover:text-[#FE8A00] transition-colors">{cust.name}</td>
                           <td className="py-3 px-3 font-mono text-[11px] text-slate-600">{cust.phone}</td>
                           <td className="py-3 px-3 text-slate-600">{cust.district}</td>
                           <td className="py-3 px-3 font-semibold text-slate-800">{cust.orderCount} kali</td>
                           <td className="py-3 px-3 font-extrabold text-emerald-700">
                             Rp {cust.totalSpend.toLocaleString('id-ID')}
                           </td>
-                          <td className="py-3 px-3 text-right text-slate-500 text-[11px]">
+                          <td className="py-3 px-3 text-slate-500 text-[11px]">
                             {new Date(cust.lastOrderDate).toLocaleDateString('id-ID')}
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigateAdmin('customers', 'customer_detail', cust.phone || cust.name);
+                              }}
+                              className="px-2.5 py-1 text-[11px] font-bold text-[#FE8A00] hover:bg-orange-50 rounded transition-colors inline-flex items-center gap-1"
+                            >
+                              <span>Rincian</span>
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
                           </td>
                         </tr>
                       ))
@@ -2625,74 +3141,493 @@ export default function AdminDashboard({
           )}
 
           {/* ================================================================ */}
-          {/* 7. PROGRAM AFFILIATE                                              */}
+          {/* 7. PROGRAM AFFILIATE & CAMPAIGN (REQUIREMENT 1, 3, 4, 6)         */}
           {/* ================================================================ */}
           {activeTab === 'affiliates' && (
-            <div className="space-y-4 max-w-7xl mx-auto">
-              <div>
-                <h1 className="text-lg font-bold text-slate-900">Program Affiliate Tumpang Shop</h1>
-                <p className="text-xs text-slate-500">Kelola permohonan pendaftaran mitra affiliate dan kode referral promotor</p>
+            <div className="space-y-6 max-w-7xl mx-auto">
+              {/* Header & Sub-tab Navigation */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-4">
+                <div>
+                  <h1 className="text-lg font-bold text-slate-900">Program Affiliate & Campaign Promosi</h1>
+                  <p className="text-xs text-slate-500">Kelola kampanye promosi berjadwal, kuota komisi, mitra referral, dan audit transaksi</p>
+                </div>
+
+                {affiliateSubTab === 'campaigns' && (
+                  <button
+                    onClick={handleOpenCreateCampaign}
+                    className="px-4 py-2 bg-[#FE8A00] hover:bg-[#e07b00] text-white text-xs font-bold rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Buat Campaign Baru</span>
+                  </button>
+                )}
               </div>
 
-              <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50/80 text-slate-600 uppercase border-b border-slate-200 font-semibold tracking-wider text-[11px]">
-                    <tr>
-                      <th className="py-3 px-3">Nama Mitra</th>
-                      <th className="py-3 px-3">Kontak (WA & Email)</th>
-                      <th className="py-3 px-3">Kanal Promosi</th>
-                      <th className="py-3 px-3">Kode Referral</th>
-                      <th className="py-3 px-3">Status</th>
-                      <th className="py-3 px-3 text-right">Tindakan</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {affiliates.length === 0 ? (
+              {/* Sub-tab Switcher */}
+              <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
+                <button
+                  onClick={() => setAffiliateSubTab('campaigns')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                    affiliateSubTab === 'campaigns'
+                      ? 'bg-orange-50 text-[#FE8A00] border border-orange-200'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  <Flame className="w-3.5 h-3.5" />
+                  <span>Campaign Promosi ({campaigns.length})</span>
+                </button>
+
+                <button
+                  onClick={() => setAffiliateSubTab('applications')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                    affiliateSubTab === 'applications'
+                      ? 'bg-orange-50 text-[#FE8A00] border border-orange-200'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Mitra Affiliate ({affiliates.length})</span>
+                </button>
+
+                <button
+                  onClick={() => setAffiliateSubTab('transactions')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                    affiliateSubTab === 'transactions'
+                      ? 'bg-orange-50 text-[#FE8A00] border border-orange-200'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  <DollarSign className="w-3.5 h-3.5" />
+                  <span>Riwayat Komisi Pesanan ({orders.filter(o => Boolean(o.affiliateCommission)).length})</span>
+                </button>
+
+                <button
+                  onClick={() => setAffiliateSubTab('settings')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                    affiliateSubTab === 'settings'
+                      ? 'bg-orange-50 text-[#FE8A00] border border-orange-200'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  <span>Pengaturan Komisi Standar</span>
+                </button>
+              </div>
+
+              {/* ------------------------------------------------------------ */}
+              {/* SUB-TAB 1: CAMPAIGN PROMOSI (REQUIREMENT 3 & 4)              */}
+              {/* ------------------------------------------------------------ */}
+              {affiliateSubTab === 'campaigns' && (
+                <div className="space-y-6">
+                  {/* Real-time Conflict Alert Banner */}
+                  {(() => {
+                    const conflicts = detectCampaignConflicts(campaigns, products);
+                    if (conflicts.length === 0) return null;
+                    return (
+                      <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl text-xs space-y-2">
+                        <div className="flex items-center gap-2 text-amber-900 font-bold">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>Peringatan Konflik Jadwal Campaign ({conflicts.length} Produk Bertumpuk)</span>
+                        </div>
+                        <p className="text-amber-800 leading-relaxed text-[11px]">
+                          Terdapat produk yang didaftarkan pada lebih dari satu campaign yang aktif di periode bersamaan. Sistem menerapkan <strong>prioritas deterministik (campaign dengan komisi tertinggi akan diprioritaskan)</strong> dan tidak menjumlahkan persentase secara otomatis:
+                        </p>
+                        <div className="divide-y divide-amber-200/60 max-h-40 overflow-y-auto">
+                          {conflicts.map((cf, idx) => (
+                            <div key={idx} className="py-1.5 text-[11px] text-amber-900">
+                              • <strong>{cf.productName}</strong>: {cf.message}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Campaigns Table */}
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50/80 text-slate-600 uppercase border-b border-slate-200 font-semibold tracking-wider text-[11px]">
+                        <tr>
+                          <th className="py-3 px-3">Nama Campaign</th>
+                          <th className="py-3 px-3">Persentase</th>
+                          <th className="py-3 px-3">Periode Waktu</th>
+                          <th className="py-3 px-3">Produk</th>
+                          <th className="py-3 px-3">Performa Nyata</th>
+                          <th className="py-3 px-3">Status</th>
+                          <th className="py-3 px-3 text-right">Tindakan</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {campaigns.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="py-12 text-center text-slate-400">
+                              Belum ada affiliate campaign yang dibuat. Klik tombol <strong>+ Buat Campaign Baru</strong> untuk membuat kampanye promosi pertama.
+                            </td>
+                          </tr>
+                        ) : (
+                          campaigns.map(camp => {
+                            const perf = getCampaignPerformance(camp, orders);
+                            const startStr = new Date(camp.startDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                            const endStr = new Date(camp.endDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+                            return (
+                              <tr key={camp.id} className="hover:bg-slate-50/60">
+                                <td className="py-3 px-3">
+                                  <div className="font-bold text-slate-900">{camp.name}</div>
+                                  <div className="text-[11px] text-slate-400 line-clamp-1">{camp.description || 'Tanpa deskripsi'}</div>
+                                </td>
+
+                                <td className="py-3 px-3">
+                                  <span className="font-black text-sm text-[#FE8A00] font-mono">
+                                    {camp.commissionRate}%
+                                  </span>
+                                </td>
+
+                                <td className="py-3 px-3 text-[11px] text-slate-600">
+                                  <div>Mulai: {startStr}</div>
+                                  <div>Selesai: {endStr}</div>
+                                </td>
+
+                                <td className="py-3 px-3">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                                    <Tag className="w-3 h-3 text-slate-400" />
+                                    <span>{camp.productIds.length} Produk</span>
+                                  </span>
+                                </td>
+
+                                <td className="py-3 px-3 text-[11px]">
+                                  <div className="font-semibold text-slate-800">
+                                    {perf.usedOrders} {camp.maxOrders ? `/ ${camp.maxOrders}` : ''} Pesanan
+                                  </div>
+                                  <div className="text-slate-500 font-mono text-[10px]">
+                                    Rp {perf.usedCommission.toLocaleString('id-ID')} {camp.budgetLimit ? `/ Rp ${camp.budgetLimit.toLocaleString('id-ID')}` : ''}
+                                  </div>
+                                  {perf.isBudgetExhausted && (
+                                    <span className="text-[10px] font-bold text-rose-600 block">Anggaran Habis</span>
+                                  )}
+                                  {perf.isQuotaExhausted && (
+                                    <span className="text-[10px] font-bold text-rose-600 block">Kuota Habis</span>
+                                  )}
+                                </td>
+
+                                <td className="py-3 px-3">
+                                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    perf.effectiveStatus === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800' :
+                                    perf.effectiveStatus === 'SCHEDULED' ? 'bg-blue-100 text-blue-800' :
+                                    perf.effectiveStatus === 'PAUSED' ? 'bg-amber-100 text-amber-800' :
+                                    perf.effectiveStatus === 'ENDED' ? 'bg-slate-200 text-slate-700' :
+                                    'bg-slate-100 text-slate-600'
+                                  }`}>
+                                    {perf.effectiveStatus === 'ACTIVE' ? 'Aktif' :
+                                     perf.effectiveStatus === 'SCHEDULED' ? 'Terjadwal' :
+                                     perf.effectiveStatus === 'PAUSED' ? 'Dijeda' :
+                                     perf.effectiveStatus === 'ENDED' ? 'Selesai / Berakhir' : 'Draft'}
+                                  </span>
+                                </td>
+
+                                <td className="py-3 px-3 text-right">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      onClick={() => handleToggleCampaignStatus(camp.id)}
+                                      className="p-1 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                                      title={camp.status === 'ACTIVE' ? 'Jeda Campaign' : 'Aktifkan Campaign'}
+                                    >
+                                      {camp.status === 'ACTIVE' ? <PauseCircle className="w-4 h-4 text-amber-600" /> : <Play className="w-4 h-4 text-emerald-600" />}
+                                    </button>
+
+                                    <button
+                                      onClick={() => handleOpenEditCampaign(camp)}
+                                      className="p-1 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                                      title="Edit Campaign"
+                                    >
+                                      <Edit3 className="w-4 h-4" />
+                                    </button>
+
+                                    {camp.status !== 'ENDED' && (
+                                      <button
+                                        onClick={() => handleEndCampaign(camp.id)}
+                                        className="p-1 rounded text-slate-600 hover:text-rose-600 hover:bg-slate-100"
+                                        title="Akhiri Campaign"
+                                      >
+                                        <StopCircle className="w-4 h-4 text-slate-400 hover:text-rose-600" />
+                                      </button>
+                                    )}
+
+                                    <button
+                                      onClick={() => handleDeleteCampaign(camp.id)}
+                                      className="p-1 rounded text-slate-600 hover:text-rose-600 hover:bg-slate-100"
+                                      title="Hapus Campaign"
+                                    >
+                                      <Trash2 className="w-4 h-4 text-slate-400 hover:text-rose-600" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* ------------------------------------------------------------ */}
+              {/* SUB-TAB 2: MITRA AFFILIATE (APPLICATIONS)                    */}
+              {/* ------------------------------------------------------------ */}
+              {affiliateSubTab === 'applications' && (
+                <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50/80 text-slate-600 uppercase border-b border-slate-200 font-semibold tracking-wider text-[11px]">
                       <tr>
-                        <td colSpan={6} className="py-12 text-center text-slate-400">
-                          Belum ada pendaftaran affiliate yang masuk.
-                        </td>
+                        <th className="py-3 px-3">Nama Mitra</th>
+                        <th className="py-3 px-3">Kontak (WA & Email)</th>
+                        <th className="py-3 px-3">Kanal Promosi</th>
+                        <th className="py-3 px-3">Kode Referral</th>
+                        <th className="py-3 px-3">Status</th>
+                        <th className="py-3 px-3 text-right">Tindakan</th>
                       </tr>
-                    ) : (
-                      affiliates.map(app => (
-                        <tr key={app.id} className="hover:bg-slate-50/60">
-                          <td className="py-3 px-3 font-bold text-slate-900">{app.fullName}</td>
-                          <td className="py-3 px-3">
-                            <div className="text-slate-800 font-mono text-[11px]">{app.phone}</div>
-                            <div className="text-slate-400 text-[10px]">{app.email}</div>
-                          </td>
-                          <td className="py-3 px-3 text-slate-600 max-w-xs truncate">{app.promotionChannel}</td>
-                          <td className="py-3 px-3 font-mono font-bold text-[#FE8A00]">{app.referralCode}</td>
-                          <td className="py-3 px-3">
-                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                              app.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                            }`}>
-                              {app.status === 'APPROVED' ? 'Disetujui' : 'Menunggu Review'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 text-right">
-                            {app.status !== 'APPROVED' ? (
-                              <button
-                                onClick={() => handleUpdateAffiliateStatus(app.id, 'APPROVED')}
-                                className="px-2 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-semibold"
-                              >
-                                Setujui
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleUpdateAffiliateStatus(app.id, 'PENDING')}
-                                className="px-2 py-1 text-slate-600 hover:bg-slate-100 rounded text-[11px]"
-                              >
-                                Tinjau Ulang
-                              </button>
-                            )}
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {affiliates.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-12 text-center text-slate-400">
+                            Belum ada pendaftaran affiliate yang masuk.
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      ) : (
+                        affiliates.map(app => (
+                          <tr 
+                            key={app.id} 
+                            className="hover:bg-slate-50/60 cursor-pointer transition-colors"
+                            onClick={() => navigateAdmin('affiliates', 'affiliate_detail', app.id)}
+                          >
+                            <td className="py-3 px-3 font-bold text-slate-900 hover:text-[#FE8A00] transition-colors">{app.fullName}</td>
+                            <td className="py-3 px-3">
+                              <div className="text-slate-800 font-mono text-[11px]">{app.phone}</div>
+                              <div className="text-slate-400 text-[10px]">{app.email}</div>
+                            </td>
+                            <td className="py-3 px-3 text-slate-600 max-w-xs truncate">{app.promotionChannel}</td>
+                            <td className="py-3 px-3 font-mono font-bold text-[#FE8A00]">{app.referralCode}</td>
+                            <td className="py-3 px-3">
+                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                app.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {app.status === 'APPROVED' ? 'Disetujui' : 'Menunggu Review'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigateAdmin('affiliates', 'affiliate_detail', app.id);
+                                  }}
+                                  className="px-2 py-1 text-[11px] font-bold text-[#FE8A00] hover:bg-orange-50 rounded transition-colors inline-flex items-center gap-1"
+                                >
+                                  <span>Rincian</span>
+                                  <ChevronRight className="w-3 h-3" />
+                                </button>
+                                {app.status !== 'APPROVED' ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleUpdateAffiliateStatus(app.id, 'APPROVED');
+                                    }}
+                                    className="px-2 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[11px] font-semibold"
+                                  >
+                                    Setujui
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleUpdateAffiliateStatus(app.id, 'PENDING');
+                                    }}
+                                    className="px-2 py-1 text-slate-600 hover:bg-slate-100 rounded text-[11px]"
+                                  >
+                                    Tinjau Ulang
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* ------------------------------------------------------------ */}
+              {/* SUB-TAB 3: RIWAYAT KOMISI TRANSAKSI (AUDIT & INTEGRITY)     */}
+              {/* ------------------------------------------------------------ */}
+              {affiliateSubTab === 'transactions' && (
+                <div className="space-y-4">
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-xs text-slate-600 leading-relaxed">
+                    <p className="font-bold text-slate-900 mb-1">Integritas Komisi Transaksi & Immutability Snapshot</p>
+                    <p>
+                      Setiap komisi pesanan dikalkulasikan di backend saat pesanan dibuat dan disimpan sebagai snapshot permanen. 
+                      Perubahan persentase komisi toko atau campaign di masa mendatang <strong>tidak akan mengubah nominal pada transaksi lama</strong>.
+                    </p>
+                  </div>
+
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50/80 text-slate-600 uppercase border-b border-slate-200 font-semibold tracking-wider text-[11px]">
+                        <tr>
+                          <th className="py-3 px-3">No. Pesanan & Tanggal</th>
+                          <th className="py-3 px-3">Mitra Referral</th>
+                          <th className="py-3 px-3">Rincian Komisi Produk</th>
+                          <th className="py-3 px-3">Total Komisi</th>
+                          <th className="py-3 px-3">Status Komisi</th>
+                          <th className="py-3 px-3 text-right">Tindakan</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {orders.filter(o => Boolean(o.affiliateCommission)).length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-12 text-center text-slate-400">
+                              Belum ada transaksi dengan kode referral yang tercatat.
+                            </td>
+                          </tr>
+                        ) : (
+                          orders.filter(o => Boolean(o.affiliateCommission)).map(ord => {
+                            const snap = ord.affiliateCommission!;
+                            return (
+                              <tr key={ord.id} className="hover:bg-slate-50/60">
+                                <td className="py-3 px-3">
+                                  <div className="font-mono font-bold text-slate-900">{ord.orderNumber}</div>
+                                  <div className="text-[10px] text-slate-400">
+                                    {new Date(ord.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                </td>
+
+                                <td className="py-3 px-3">
+                                  <div className="font-mono font-bold text-[#FE8A00]">{snap.referralCode}</div>
+                                  <div className="text-[10px] text-slate-500">{snap.affiliateName || 'Mitra Partner'}</div>
+                                </td>
+
+                                <td className="py-3 px-3 max-w-md">
+                                  <div className="space-y-1">
+                                    {snap.itemsCommission.map((it, idx) => (
+                                      <div key={idx} className="text-[11px] flex items-center justify-between gap-2 border-b border-slate-100 pb-0.5">
+                                        <span className="truncate text-slate-700">
+                                          {it.quantity}× {it.productName}
+                                        </span>
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                                            it.appliedType === 'campaign' ? 'bg-orange-100 text-[#FE8A00]' :
+                                            it.appliedType === 'product_custom' ? 'bg-blue-100 text-blue-800' :
+                                            'bg-slate-100 text-slate-700'
+                                          }`}>
+                                            {it.appliedType === 'campaign' ? `Camp (${it.ratePercent}%)` :
+                                             it.appliedType === 'product_custom' ? `Khusus (${it.ratePercent}%)` :
+                                             `Std (${it.ratePercent}%)`}
+                                          </span>
+                                          <span className="font-mono font-bold text-slate-900">
+                                            Rp {it.commissionAmount.toLocaleString('id-ID')}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </td>
+
+                                <td className="py-3 px-3 font-mono font-bold text-sm text-[#FE8A00]">
+                                  Rp {snap.totalCommission.toLocaleString('id-ID')}
+                                </td>
+
+                                <td className="py-3 px-3">
+                                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    snap.status === 'PAID' ? 'bg-emerald-100 text-emerald-800' :
+                                    snap.status === 'APPROVED' ? 'bg-blue-100 text-blue-800' :
+                                    snap.status === 'CANCELLED' ? 'bg-rose-100 text-rose-800' :
+                                    'bg-amber-100 text-amber-800'
+                                  }`}>
+                                    {snap.status === 'PAID' ? 'Lunas / Ditransfer' :
+                                     snap.status === 'APPROVED' ? 'Disetujui' :
+                                     snap.status === 'CANCELLED' ? 'Dibatalkan' : 'Pending'}
+                                  </span>
+                                </td>
+
+                                <td className="py-3 px-3 text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                    {snap.status !== 'PAID' && snap.status !== 'CANCELLED' && (
+                                      <button
+                                        onClick={() => handleUpdateCommissionPaymentStatus(ord.id, 'PAID')}
+                                        className="px-2 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[10px] font-semibold"
+                                      >
+                                        Tandai Cair
+                                      </button>
+                                    )}
+
+                                    {snap.status !== 'CANCELLED' && (
+                                      <button
+                                        onClick={() => handleUpdateCommissionPaymentStatus(ord.id, 'CANCELLED')}
+                                        className="px-2 py-1 text-rose-600 hover:bg-rose-50 rounded text-[10px]"
+                                        title="Batalkan Komisi"
+                                      >
+                                        Batalkan
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* ------------------------------------------------------------ */}
+              {/* SUB-TAB 4: PENGATURAN KOMISI STANDAR (REQUIREMENT 1)        */}
+              {/* ------------------------------------------------------------ */}
+              {affiliateSubTab === 'settings' && (
+                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs space-y-4 max-w-xl">
+                  <h2 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">
+                    Pengaturan Komisi Standar Toko
+                  </h2>
+
+                  <div>
+                    <label className="font-semibold text-slate-700 block mb-1 text-xs">
+                      Komisi Standar Toko (%) <span className="text-[#FE8A00] font-bold">(Default 15%)</span>
+                    </label>
+                    <div className="relative max-w-xs">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        value={storeConfig.defaultAffiliateCommissionRate ?? 15}
+                        onChange={(e) => {
+                          const val = Math.min(100, Math.max(0, Number(e.target.value)));
+                          onUpdateConfig({ ...storeConfig, defaultAffiliateCommissionRate: val });
+                        }}
+                        className="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
+                      />
+                      <span className="absolute right-3 top-2 text-xs text-slate-400 font-bold">%</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Komisi dasar yang berlaku untuk produk yang tidak memiliki komisi khusus atau campaign aktif.
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-[11px] text-amber-800 space-y-1">
+                    <p className="font-bold">Ketentuan Integritas Transaksi:</p>
+                    <p>
+                      Perubahan persentase ini akan disimpan dan berlaku untuk pesanan baru di masa mendatang. 
+                      Sistem <strong>tidak akan mengubah persentase atau nominal komisi pesanan lama</strong> yang sudah memiliki snapshot transaksi.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -2812,6 +3747,30 @@ export default function AdminDashboard({
                       className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
                     />
                   </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100">
+                  <label className="font-semibold text-slate-700 block mb-1">
+                    Komisi Standar Affiliate Toko (%) <span className="text-[#FE8A00] font-bold">(Default 15%)</span>
+                  </label>
+                  <div className="relative max-w-xs">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.5"
+                      value={storeConfig.defaultAffiliateCommissionRate ?? 15}
+                      onChange={(e) => onUpdateConfig({ 
+                        ...storeConfig, 
+                        defaultAffiliateCommissionRate: Math.min(100, Math.max(0, Number(e.target.value))) 
+                      })}
+                      className="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-bold border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
+                    />
+                    <span className="absolute right-3 top-2 text-xs text-slate-400 font-bold">%</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Komisi dasar yang diterima mitra affiliate jika produk tidak memiliki komisi khusus atau campaign aktif. Transaksi lama dengan snapshot komisi tidak akan terpengaruh.
+                  </p>
                 </div>
 
                 <div className="pt-2 border-t border-slate-100">

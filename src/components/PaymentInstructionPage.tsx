@@ -147,7 +147,7 @@ export default function PaymentInstructionPage({
             <div className="flex items-start gap-2.5">
               <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold flex items-center justify-center shrink-0 text-[11px]">3</span>
               <p>
-                <strong>Stok Terjamin:</strong> Barang pesanan telah diamankan dari inventaris toko saat pesanan dibuat, sehingga Anda tidak perlu khawatir kehabisan stok.
+                <strong>Alokasi Stok:</strong> Barang pesanan telah dialokasikan dari inventaris toko saat pesanan dibuat, sehingga Anda tidak perlu khawatir kehabisan stok.
               </p>
             </div>
           </div>

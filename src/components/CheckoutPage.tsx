@@ -1,16 +1,22 @@
 import React, { useState } from 'react';
-import { CartItem, Order, StoreConfig, Product } from '../types';
+import { CartItem, Order, StoreConfig, Product, AffiliateCampaign, AffiliateApplication } from '../types';
 import { DISTRICTS } from '../data/mockData';
 import { PAYMENT_GATEWAY_CONFIG, createOfficialPaymentLink } from '../lib/paymentGateway';
+import { calculateOrderAffiliateCommission } from '../lib/commissionCalculator';
+import { getActiveAffiliateAttribution } from '../lib/affiliateAttribution';
 import { 
   ArrowLeft, AlertTriangle, ShieldCheck, Truck, Store, 
-  CreditCard, ArrowRight, CheckCircle2, Lock, FileText, Info 
+  CreditCard, ArrowRight, CheckCircle2, Lock, FileText, Info
 } from 'lucide-react';
 
 interface CheckoutPageProps {
   items: CartItem[];
   storeConfig: StoreConfig;
   products: Product[];
+  campaigns?: AffiliateCampaign[];
+  affiliates?: AffiliateApplication[];
+  existingOrders?: Order[];
+  activeReferralCode?: string;
   onBackToCart: () => void;
   onOrderCreated: (order: Order, paymentLinkUrl?: string) => void;
 }
@@ -19,6 +25,10 @@ export default function CheckoutPage({
   items,
   storeConfig,
   products = [],
+  campaigns = [],
+  affiliates = [],
+  existingOrders = [],
+  activeReferralCode = '',
   onBackToCart,
   onOrderCreated
 }: CheckoutPageProps) {
@@ -77,6 +87,36 @@ export default function CheckoutPage({
     const now = new Date();
     const orderNumber = `TS-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.floor(100 + Math.random() * 900)}`;
 
+    // Automatic TikTok-style affiliate attribution lookup:
+    // Resolves last-click attribution within the 30-day window
+    const attribution = getActiveAffiliateAttribution(affiliates);
+    const finalReferralCode = attribution?.referralCode || (activeReferralCode ? activeReferralCode.trim().toUpperCase() : '');
+    let affiliateSnapshot = undefined;
+
+    if (finalReferralCode) {
+      const matchedAffiliate = affiliates.find(a => a.referralCode?.toUpperCase() === finalReferralCode);
+      if (matchedAffiliate && matchedAffiliate.status === 'APPROVED') {
+        const itemsForCommission = items.map(item => ({
+          productId: item.product.id,
+          name: item.product.name,
+          sku: item.selectedOption?.sku || item.product.sku,
+          price: item.unitPrice,
+          quantity: item.quantity,
+          subtotal: item.unitPrice * item.quantity
+        }));
+
+        affiliateSnapshot = calculateOrderAffiliateCommission(
+          itemsForCommission,
+          finalReferralCode,
+          storeConfig,
+          products,
+          campaigns,
+          { id: matchedAffiliate.id, fullName: matchedAffiliate.fullName },
+          existingOrders
+        );
+      }
+    }
+
     const newOrder: Order = {
       id: `ord_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       orderNumber,
@@ -101,6 +141,8 @@ export default function CheckoutPage({
       subtotal,
       serviceFee,
       total,
+      referralCode: finalReferralCode || undefined,
+      affiliateCommission: affiliateSnapshot,
       // Initial status MUST be PENDING per marketplace specifications
       paymentStatus: 'PENDING',
       orderStatus: 'NEW',
@@ -326,7 +368,7 @@ export default function CheckoutPage({
                     <Store className={`w-4 h-4 ${shippingMethod === 'PICKUP' ? 'text-[#FE8A00]' : 'text-slate-500'}`} />
                     <span className="text-xs font-bold text-slate-900">Ambil di Toko</span>
                   </div>
-                  <div className="text-[11px] text-slate-500">Pasar Tumpang Malang</div>
+                  <div className="text-[11px] text-slate-500">Outlet Tumpang Shop Malang</div>
                   <div className="mt-2 text-xs font-black text-emerald-600">
                     Gratis (Rp 0)
                   </div>

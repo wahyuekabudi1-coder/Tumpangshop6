@@ -13,27 +13,27 @@ interface Slide {
 const slides: Slide[] = [
   {
     id: 's1',
-    title: 'Pasar Lokal Tumpang',
-    subtitle: 'Belanja sembako, beras pulen, dan sayur segar langsung dari petani Malang.',
-    tag: 'Segar & Asli',
+    title: 'Pilihan Produk Berkualitas',
+    subtitle: 'Temukan aneka pilihan produk menarik dan berkualitas untuk memenuhi kebutuhan Anda.',
+    tag: 'Pilihan Terbaik',
     bgGradient: 'from-orange-800 to-amber-950',
-    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&auto=format&fit=crop&q=80'
+    image: 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=800&auto=format&fit=crop&q=80'
   },
   {
     id: 's2',
-    title: 'Karya & Produk UMKM',
-    subtitle: 'Kopi Robusta Lereng Semeru, keripik tempe renyah, dan madu hutan alami.',
-    tag: 'Dukung UMKM',
-    bgGradient: 'from-amber-800 to-orange-950',
-    image: 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=800&auto=format&fit=crop&q=80'
+    title: 'Koleksi Menarik & Beragam',
+    subtitle: 'Katalog belanja lengkap dengan pilihan produk terkurasi dan proses belanja yang mudah.',
+    tag: 'Katalog Lengkap',
+    bgGradient: 'from-slate-900 to-orange-950',
+    image: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&auto=format&fit=crop&q=80'
   },
   {
     id: 's3',
-    title: 'Pengantaran Cepat Area Malang',
-    subtitle: 'Melayani Kecamatan Tumpang, Poncokusumo, Pakis, Jabung, dan sekitarnya.',
-    tag: 'Langsung Sampai',
-    bgGradient: 'from-slate-900 to-orange-950',
-    image: 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?w=800&auto=format&fit=crop&q=80'
+    title: 'Layanan Pengantaran Cepat',
+    subtitle: 'Pesanan dikemas rapi dan diantar tepat waktu langsung ke lokasi tujuan Anda.',
+    tag: 'Pengantaran Andal',
+    bgGradient: 'from-amber-900 to-slate-950',
+    image: 'https://images.unsplash.com/photo-1526367790999-0150786686a2?w=800&auto=format&fit=crop&q=80'
   }
 ];
 

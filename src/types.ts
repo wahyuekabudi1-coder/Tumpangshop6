@@ -29,6 +29,8 @@ export interface Product {
   variations?: ProductVariation[];
   viewCount?: number;
   salesCount?: number;
+  useCustomCommission?: boolean;
+  customCommissionRate?: number; // 0 - 100 percentage
   createdAt: string;
   updatedAt: string;
 }
@@ -56,6 +58,55 @@ export interface AffiliateApplication {
   status: 'PENDING' | 'APPROVED';
   referralCode: string;
   createdAt: string;
+}
+
+export type CampaignStatus = 'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'ENDED';
+
+export interface AffiliateCampaign {
+  id: string;
+  name: string;
+  description: string;
+  productIds: string[]; // List of included product IDs
+  commissionRate: number; // Commission percentage (e.g. 25%)
+  startDate: string; // ISO string 'YYYY-MM-DDTHH:mm:ss'
+  endDate: string; // ISO string 'YYYY-MM-DDTHH:mm:ss'
+  status: CampaignStatus;
+  budgetLimit?: number; // Optional max commission budget (Rp)
+  maxOrders?: number; // Optional max order count
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CampaignConflict {
+  productId: string;
+  productName: string;
+  conflictingCampaignNames: string[];
+  message: string;
+}
+
+export interface OrderItemCommissionSnapshot {
+  productId: string;
+  productName: string;
+  sku: string;
+  price: number;
+  quantity: number;
+  subtotal: number;
+  appliedType: 'campaign' | 'product_custom' | 'standard';
+  ratePercent: number;
+  commissionAmount: number;
+  campaignId?: string;
+  campaignName?: string;
+  fallbackReason?: string;
+}
+
+export interface OrderAffiliateSnapshot {
+  referralCode: string;
+  affiliateId?: string;
+  affiliateName?: string;
+  totalCommission: number;
+  itemsCommission: OrderItemCommissionSnapshot[];
+  status: 'PENDING' | 'APPROVED' | 'PAID' | 'CANCELLED';
+  calculatedAt: string;
 }
 
 export interface Category {
@@ -119,6 +170,8 @@ export interface Order {
   paymentExpiresAt: string;
   trackingNumber?: string;
   paidAt?: string;
+  referralCode?: string;
+  affiliateCommission?: OrderAffiliateSnapshot;
   createdAt: string;
   updatedAt: string;
 }
@@ -132,6 +185,7 @@ export interface StoreConfig {
   minOrderAmount: number;
   defaultDeliveryFee: number;
   serviceFee: number;
+  defaultAffiliateCommissionRate: number; // Standard default 15%
   qrisImageUrl?: string;
 }
 
@@ -143,3 +197,4 @@ export interface UserProfile {
   address?: string;
   role: 'customer' | 'admin';
 }
+

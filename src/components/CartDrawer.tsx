@@ -95,7 +95,7 @@ export default function CartDrawer({
               </div>
               <p className="text-sm font-semibold text-slate-700">Keranjang Anda masih kosong</p>
               <p className="text-xs text-slate-400 mt-1 max-w-xs leading-relaxed">
-                Pilih aneka produk sembako, sayuran segar lereng Bromo, atau oleh-oleh khas UMKM Tumpang.
+                Jelajahi dan pilih aneka produk pilihan dan berkualitas di Tumpang Shop.
               </p>
             </div>
           ) : (

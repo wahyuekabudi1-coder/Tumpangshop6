@@ -41,18 +41,6 @@ export default function AuthModal({
     onClose();
   };
 
-  const handleAdminDemoLogin = () => {
-    const adminUser: UserProfile = {
-      id: 'admin_master',
-      email: 'admin@tumpangshop.id',
-      fullName: 'Pengelola Tumpang Shop',
-      role: 'admin'
-    };
-    onLogin(adminUser);
-    onSwitchToAdmin();
-    onClose();
-  };
-
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-2xs flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-slate-100 relative">
@@ -116,7 +104,7 @@ export default function AuthModal({
                 {mode === 'login' ? 'Masuk ke Tumpang Shop' : 'Daftar Akun Baru'}
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Akses keranjang dan pantau belanjaan pasar lokal Anda
+                Akses keranjang dan pantau pesanan belanja Anda di Tumpang Shop
               </p>
             </div>
 
@@ -177,17 +165,6 @@ export default function AuthModal({
                 className="font-bold text-emerald-700 hover:underline"
               >
                 {mode === 'login' ? 'Daftar di sini' : 'Masuk di sini'}
-              </button>
-            </div>
-
-            {/* Quick Demo Access */}
-            <div className="mt-4 pt-3 border-t border-slate-100">
-              <button
-                onClick={handleAdminDemoLogin}
-                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-2"
-              >
-                <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                <span>Masuk Cepat sebagai Admin Pengelola</span>
               </button>
             </div>
           </div>

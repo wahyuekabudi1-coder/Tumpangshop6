@@ -582,8 +582,8 @@ export default function ProductDetailPage({
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">{storeConfig.storeName}</h4>
                   <p className="text-xs text-slate-500 line-clamp-1">{storeConfig.storeAddress}</p>
-                  <span className="inline-block mt-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
-                    Mitra Resmi UMKM Malang
+                  <span className="inline-block mt-0.5 text-[10px] font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded-md">
+                    Toko Terverifikasi Tumpang Shop
                   </span>
                 </div>
               </div>

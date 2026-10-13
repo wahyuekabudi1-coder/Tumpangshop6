@@ -82,7 +82,7 @@ export default function CartPage({
             </div>
             <h2 className="text-lg font-bold text-slate-900">Wah, keranjang belanjamu kosong!</h2>
             <p className="text-xs sm:text-sm text-slate-500 mt-2 max-w-sm mx-auto leading-relaxed">
-              Yuk jelajahi aneka kebutuhan segar pasar tradisional, beras lereng Bromo, dan produk unggulan UMKM Tumpang.
+              Yuk jelajahi aneka koleksi produk pilihan dan berkualitas yang tersedia di Tumpang Shop.
             </p>
             <button
               onClick={onNavigateToCatalog}

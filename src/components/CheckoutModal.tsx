@@ -262,7 +262,7 @@ export default function CheckoutModal({
                 rows={2}
                 value={deliveryAddress}
                 onChange={(e) => setDeliveryAddress(e.target.value)}
-                placeholder="Jl. Raya Malangsuko No. 45, RT 03 RW 02, Dekat Pasar Tumpang..."
+                placeholder="Jl. Raya Malangsuko No. 45, RT 03 RW 02, Tumpang..."
                 className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:border-emerald-600 focus:outline-hidden"
               />
             </div>
@@ -333,10 +333,10 @@ export default function CheckoutModal({
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-800">Ambil di Pasar</span>
+                  <span className="text-xs font-bold text-slate-800">Ambil di Outlet Toko</span>
                   <Store className="w-3.5 h-3.5 text-slate-600" />
                 </div>
-                <div className="text-[11px] text-slate-500">Pasar Raya Tumpang</div>
+                <div className="text-[11px] text-slate-500">Outlet Tumpang Shop Malang</div>
                 <div className="text-xs font-extrabold text-emerald-800 mt-1">
                   Gratis (Rp 0)
                 </div>

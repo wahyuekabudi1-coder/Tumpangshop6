@@ -10,12 +10,13 @@ import PaymentInstructionPage from './components/PaymentInstructionPage';
 import OrderDetailPage from './components/OrderDetailPage';
 import AuthModal from './components/AuthModal';
 import AdminDashboard from './components/AdminDashboard';
+import AdminLoginPage from './components/AdminLoginPage';
 import AffiliatePage from './components/AffiliatePage';
 import Footer from './components/Footer';
 import { 
   Product, Category, CartItem, Order, StoreConfig, 
   UserProfile, ProductVariationOption, ProductReview,
-  AffiliateApplication
+  AffiliateApplication, AffiliateCampaign
 } from './types';
 import { 
   getStoredProducts, saveStoredProducts, 
@@ -25,7 +26,9 @@ import {
   getStoredUser, saveStoredUser,
   getStoredReviews, saveStoredReview,
   getStoredAffiliates, saveStoredAffiliate,
-  incrementProductViewCount
+  getStoredCampaigns, saveStoredCampaigns,
+  incrementProductViewCount,
+  supabase, isSupabaseConfigured
 } from './lib/supabase';
 import { getProductSlug } from './data/mockData';
 import { 
@@ -51,6 +54,14 @@ export default function App() {
   const [activePaymentOrderId, setActivePaymentOrderId] = useState<string | null>(null);
   const [activeOrderDetailId, setActiveOrderDetailId] = useState<string | null>(null);
   const [affiliateApps, setAffiliateApps] = useState<AffiliateApplication[]>(getStoredAffiliates);
+  const [campaigns, setCampaigns] = useState<AffiliateCampaign[]>(getStoredCampaigns);
+  const [activeReferralCode, setActiveReferralCode] = useState<string>(() => {
+    try {
+      return localStorage.getItem('tumpang_shop_active_referral') || '';
+    } catch {
+      return '';
+    }
+  });
 
   // Cart state persisted to localStorage
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
@@ -87,6 +98,7 @@ export default function App() {
   const [sortBy, setSortBy] = useState<'default' | 'price_asc' | 'price_desc' | 'name_asc'>('default');
   const [inStockOnly, setInStockOnly] = useState(false);
   const [isAdminView, setIsAdminView] = useState(false);
+  const [isAdminLoginView, setIsAdminLoginView] = useState(false);
 
   // Modals state (Only AuthModal for user accounts; shopping flow is 100% full-page)
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -108,6 +120,7 @@ export default function App() {
   // - /orders/:id/payment (payment instructions)
   // - /orders/:id (order detail & tracking)
   // - /affiliate (affiliate program)
+  // - /admin/login (admin login screen)
   // - /admin/* (admin Seller Centre)
   // --------------------------------------------------------------------------
   const syncRouteFromLocation = useCallback(() => {
@@ -115,6 +128,7 @@ export default function App() {
 
     // Reset all primary page views before matching
     setIsAdminView(false);
+    setIsAdminLoginView(false);
     setIsAffiliateView(false);
     setIsCartView(false);
     setIsCheckoutView(false);
@@ -122,8 +136,34 @@ export default function App() {
     setActiveOrderDetailId(null);
     setActiveProductDetail(null);
 
-    if (path.startsWith('/admin')) {
-      setIsAdminView(true);
+    // Extract referral tracking code from URL query (?ref=CODE or ?referral=CODE)
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const refParam = searchParams.get('ref') || searchParams.get('referral');
+      if (refParam && refParam.trim()) {
+        const cleanRef = refParam.trim().toUpperCase();
+        setActiveReferralCode(cleanRef);
+        localStorage.setItem('tumpang_shop_active_referral', cleanRef);
+      }
+    } catch {}
+
+    if (path === '/admin/login') {
+      const stored = getStoredUser();
+      if (stored && stored.role === 'admin') {
+        setIsAdminView(true);
+        window.history.replaceState({}, '', '/admin');
+      } else {
+        setIsAdminLoginView(true);
+      }
+    } else if (path.startsWith('/admin')) {
+      const stored = getStoredUser();
+      if (stored && stored.role === 'admin') {
+        setIsAdminView(true);
+      } else {
+        // Not authenticated as admin -> redirect to /admin/login
+        setIsAdminLoginView(true);
+        window.history.replaceState({}, '', '/admin/login');
+      }
     } else if (path === '/affiliate' || path.startsWith('/affiliate')) {
       setIsAffiliateView(true);
     } else if (path === '/cart') {
@@ -229,6 +269,49 @@ export default function App() {
       setActivePaymentOrderId(null);
       setActiveOrderDetailId(null);
     }
+  };
+
+  // Navigate to hidden admin login page (/admin/login)
+  const handleNavigateToAdminLogin = () => {
+    const user = currentUser || getStoredUser();
+    if (user && user.role === 'admin') {
+      window.history.pushState({}, '', '/admin');
+      setIsAdminView(true);
+      setIsAdminLoginView(false);
+    } else {
+      window.history.pushState({}, '', '/admin/login');
+      setIsAdminLoginView(true);
+      setIsAdminView(false);
+    }
+    setActiveProductDetail(null);
+    setIsAffiliateView(false);
+    setIsCartView(false);
+    setIsCheckoutView(false);
+    setActivePaymentOrderId(null);
+    setActiveOrderDetailId(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleAdminLoginSuccess = (adminUser: UserProfile) => {
+    handleLogin(adminUser);
+    setIsAdminLoginView(false);
+    setIsAdminView(true);
+    window.history.pushState({}, '', '/admin');
+    showToast(`Selamat datang di Seller Centre, ${adminUser.fullName}!`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleBackFromAdminLogin = () => {
+    setIsAdminLoginView(false);
+    window.history.pushState({}, '', '/');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleAdminLogout = () => {
+    handleLogout();
+    setIsAdminView(false);
+    setIsAdminLoginView(false);
+    window.history.pushState({}, '', '/');
   };
 
   // --------------------------------------------------------------------------
@@ -523,13 +606,25 @@ export default function App() {
     saveStoredConfig(newConfig);
   };
 
+  const handleUpdateCampaigns = (newCampaigns: AffiliateCampaign[]) => {
+    setCampaigns(newCampaigns);
+    saveStoredCampaigns(newCampaigns);
+  };
+
   const handleLogin = (user: UserProfile) => {
     setCurrentUser(user);
     saveStoredUser(user);
     showToast(`Selamat datang, ${user.fullName}!`);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.warn('Supabase sign out error:', err);
+      }
+    }
     setCurrentUser(null);
     saveStoredUser(null);
     showToast('Anda telah keluar dari akun.');
@@ -547,44 +642,42 @@ export default function App() {
         </div>
       )}
 
-      {/* Navbar */}
-      <Navbar
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        cartItemCount={totalCartCount}
-        onOpenCart={handleNavigateToCart}
-        onOpenTracking={() => {
-          if (orders.length > 0) {
-            handleNavigateToOrderDetail(orders[0].id);
-          } else {
-            showToast('Belum ada pesanan aktif.');
-          }
-        }}
-        onOpenAuth={() => setIsAuthOpen(true)}
-        currentUser={currentUser}
-        isAdminView={isAdminView}
-        onToggleAdminView={() => {
-          if (activeProductDetail) {
-            handleBackToCatalog();
-          }
-          const nextState = !isAdminView;
-          setIsAdminView(nextState);
-          if (nextState) {
-            window.history.pushState({}, '', '/admin');
-          } else {
-            window.history.pushState({}, '', '/');
-          }
-        }}
-      />
+      {/* Navbar (Only in customer views) */}
+      {!isAdminView && !isAdminLoginView && (
+        <Navbar
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          cartItemCount={totalCartCount}
+          onOpenCart={handleNavigateToCart}
+          onOpenTracking={() => {
+            if (orders.length > 0) {
+              handleNavigateToOrderDetail(orders[0].id);
+            } else {
+              showToast('Belum ada pesanan aktif.');
+            }
+          }}
+          onOpenAuth={() => setIsAuthOpen(true)}
+          currentUser={currentUser}
+          isAdminView={false}
+          onToggleAdminView={() => {}}
+        />
+      )}
 
       {/* Main View Router */}
-      {isAdminView ? (
+      {isAdminLoginView ? (
+        <AdminLoginPage
+          onLoginSuccess={handleAdminLoginSuccess}
+          onBackToStore={handleBackFromAdminLogin}
+        />
+      ) : isAdminView ? (
         <AdminDashboard
+          currentUser={currentUser}
           products={products}
           categories={categories}
           orders={orders}
           storeConfig={storeConfig}
           affiliates={affiliateApps}
+          campaigns={campaigns}
           onUpdateProducts={handleUpdateProducts}
           onUpdateOrders={handleUpdateOrders}
           onUpdateCategories={handleUpdateCategories}
@@ -597,6 +690,8 @@ export default function App() {
               console.error('Failed to update affiliates locally', err);
             }
           }}
+          onUpdateCampaigns={handleUpdateCampaigns}
+          onLogout={handleAdminLogout}
           onBackToCustomer={() => {
             setIsAdminView(false);
             window.history.pushState({}, '', '/');
@@ -610,6 +705,9 @@ export default function App() {
           <AffiliatePage
             storeConfig={storeConfig}
             currentUser={currentUser}
+            products={products}
+            campaigns={campaigns}
+            orders={orders}
             onBack={handleBackFromAffiliate}
             onSubmitApplication={handleAffiliateSubmit}
             existingApplication={affiliateApps[0] || null}
@@ -617,6 +715,7 @@ export default function App() {
           <Footer
             storeConfig={storeConfig}
             onOpenAffiliate={handleNavigateToAffiliate}
+            onOpenAdminLogin={handleNavigateToAdminLogin}
           />
         </>
       ) : isCartView ? (
@@ -639,6 +738,7 @@ export default function App() {
           <Footer
             storeConfig={storeConfig}
             onOpenAffiliate={handleNavigateToAffiliate}
+            onOpenAdminLogin={handleNavigateToAdminLogin}
           />
         </>
       ) : isCheckoutView ? (
@@ -650,12 +750,17 @@ export default function App() {
             items={cartItems.filter(item => selectedCartItemIds.includes(item.cartItemId))}
             storeConfig={storeConfig}
             products={products}
+            campaigns={campaigns}
+            affiliates={affiliateApps}
+            existingOrders={orders}
+            activeReferralCode={activeReferralCode}
             onBackToCart={handleNavigateToCart}
             onOrderCreated={handleOrderCreated}
           />
           <Footer
             storeConfig={storeConfig}
             onOpenAffiliate={handleNavigateToAffiliate}
+            onOpenAdminLogin={handleNavigateToAdminLogin}
           />
         </>
       ) : activePaymentOrderId ? (
@@ -689,6 +794,7 @@ export default function App() {
               <Footer
                 storeConfig={storeConfig}
                 onOpenAffiliate={handleNavigateToAffiliate}
+                onOpenAdminLogin={handleNavigateToAdminLogin}
               />
             </>
           );
@@ -724,6 +830,7 @@ export default function App() {
               <Footer
                 storeConfig={storeConfig}
                 onOpenAffiliate={handleNavigateToAffiliate}
+                onOpenAdminLogin={handleNavigateToAdminLogin}
               />
             </>
           );
@@ -750,6 +857,7 @@ export default function App() {
           <Footer
             storeConfig={storeConfig}
             onOpenAffiliate={handleNavigateToAffiliate}
+            onOpenAdminLogin={handleNavigateToAdminLogin}
           />
         </>
       ) : (
@@ -764,12 +872,12 @@ export default function App() {
             {/* Value Badges */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="bg-white p-3.5 rounded-2xl border border-slate-200/70 shadow-2xs flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-orange-50 text-[#FE8A00] flex items-center justify-center shrink-0">
                   <Store className="w-4 h-4" />
                 </div>
                 <div className="text-left">
-                  <div className="text-xs font-bold text-slate-900">Pasar Lokal</div>
-                  <div className="text-[10px] text-slate-500">Hasil bumi Tumpang asli</div>
+                  <div className="text-xs font-bold text-slate-900">Produk Pilihan</div>
+                  <div className="text-[10px] text-slate-500">Koleksi bermutu & menarik</div>
                 </div>
               </div>
 
@@ -778,8 +886,8 @@ export default function App() {
                   <Sparkles className="w-4 h-4" />
                 </div>
                 <div className="text-left">
-                  <div className="text-xs font-bold text-slate-900">Karya UMKM</div>
-                  <div className="text-[10px] text-slate-500">Kopi Dampit & Tempe Sagu</div>
+                  <div className="text-xs font-bold text-slate-900">Kemudahan Belanja</div>
+                  <div className="text-[10px] text-slate-500">Pemesanan praktis & cepat</div>
                 </div>
               </div>
 
@@ -788,8 +896,8 @@ export default function App() {
                   <Truck className="w-4 h-4" />
                 </div>
                 <div className="text-left">
-                  <div className="text-xs font-bold text-slate-900">Kurir Pengantaran</div>
-                  <div className="text-[10px] text-slate-500">Kecamatan Malang Timur</div>
+                  <div className="text-xs font-bold text-slate-900">Pengantaran Cepat</div>
+                  <div className="text-[10px] text-slate-500">Langsung ke lokasi tujuan</div>
                 </div>
               </div>
 
@@ -798,193 +906,202 @@ export default function App() {
                   <ShieldCheck className="w-4 h-4" />
                 </div>
                 <div className="text-left">
-                  <div className="text-xs font-bold text-slate-900">Jaminan Kualitas</div>
-                  <div className="text-[10px] text-slate-500">Segar & harga bersahabat</div>
+                  <div className="text-xs font-bold text-slate-900">Layanan Terpercaya</div>
+                  <div className="text-[10px] text-slate-500">Transaksi aman & nyaman</div>
                 </div>
               </div>
             </div>
 
-            {/* 1. KATEGORI BELANJA DENGAN FOTO VISUAL */}
-            <CategoryVisualCards
-              categories={categories}
-              products={products}
-              selectedCategoryId={selectedCategoryId}
-              onSelectCategory={setSelectedCategoryId}
-            />
-
-            {/* 2. BAGIAN A: PRODUK TERLARIS */}
-            <section className="space-y-4 pt-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                    <Flame className="w-5 h-5 text-amber-500" />
-                    <span>Produk Terlaris</span>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                      Berdasarkan Pesanan Selesai
-                    </span>
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Produk paling banyak dibeli dan berhasil terkirim kepada pelanggan
+            {activeProducts.length === 0 ? (
+              /* EMPTY CATALOG PROFESSIONAL STATE */
+              <div className="bg-white rounded-3xl border border-slate-200/80 p-8 sm:p-14 text-center max-w-2xl mx-auto shadow-xs space-y-5 my-6">
+                <div className="w-16 h-16 rounded-2xl bg-orange-50 text-[#FE8A00] flex items-center justify-center mx-auto shadow-xs">
+                  <ShoppingBag className="w-8 h-8" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                    Katalog Produk Sedang Dipersiapkan
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-md mx-auto">
+                    Toko kami sedang menyusun dan memperbarui daftar koleksi produk pilihan dan berkualitas. Silakan kunjungi kembali dalam waktu dekat.
                   </p>
                 </div>
-              </div>
-
-              {bestSellerProducts.length === 0 ? (
-                <div className="bg-white rounded-3xl border border-slate-200/80 p-6 sm:p-8 text-center text-slate-400">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-2">
-                    <Flame className="w-6 h-6" />
-                  </div>
-                  <h4 className="text-xs sm:text-sm font-bold text-slate-700">Belum Ada Transaksi Penjualan Selesai</h4>
-                  <p className="text-[11px] text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
-                    Peringkat produk terlaris dihitung secara otomatis dari pesanan yang berstatus <strong>Selesai (Completed)</strong>. Lakukan pesanan dan selesaikan transaksi untuk melihat daftar terlaris.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {bestSellerProducts.map((product, idx) => (
-                    <ProductCard
-                      key={`bestseller-${product.id}`}
-                      product={product}
-                      badgeLabel={`Terlaris #${idx + 1}`}
-                      badgeColor="amber"
-                      soldCount={salesMap.get(product.id) || 0}
-                      onSelect={handleNavigateToProduct}
-                      onQuickAdd={(p) => handleAddToCart(p)}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-
-            {/* 2. BAGIAN B: PRODUK TERPOPULER */}
-            <section className="space-y-4 pt-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-blue-600" />
-                    <span>Produk Terpopuler</span>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                      Interaksi Nyata
-                    </span>
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Produk yang paling sering dilihat dan diminati oleh pengunjung toko
-                  </p>
-                </div>
-              </div>
-
-              {mostPopularProducts.length === 0 ? (
-                <div className="bg-white rounded-3xl border border-slate-200/80 p-6 sm:p-8 text-center text-slate-400">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-2">
-                    <Eye className="w-6 h-6" />
-                  </div>
-                  <h4 className="text-xs sm:text-sm font-bold text-slate-700">Belum Ada Riwayat Kunjungan Produk</h4>
-                  <p className="text-[11px] text-slate-500 max-w-md mx-auto mt-1 leading-relaxed">
-                    Metrik popularitas dicatat langsung saat pengunjung mengeklik rincian produk. Klik foto produk untuk melihat halaman detail lengkap.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {mostPopularProducts.map((product) => (
-                    <ProductCard
-                      key={`popular-${product.id}`}
-                      product={product}
-                      badgeLabel="Populer"
-                      badgeColor="blue"
-                      viewCount={product.viewCount || 0}
-                      onSelect={handleNavigateToProduct}
-                      onQuickAdd={(p) => handleAddToCart(p)}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-
-            {/* 2. BAGIAN C: SEMUA PRODUK (KATALOG UMUM) */}
-            <section className="space-y-4 pt-2">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                    <ShoppingBag className="w-5 h-5 text-emerald-700" />
-                    <span>Semua Produk</span>
-                    {selectedCategoryId !== 'all' && (
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                        {categories.find(c => c.id === selectedCategoryId)?.name}
-                      </span>
-                    )}
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Menampilkan {allFilteredProducts.length} produk aktif
-                  </p>
-                </div>
-
-                {/* Sorting & Filter Controls */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex items-center gap-1.5 bg-white border border-slate-200/80 rounded-xl px-2.5 py-1.5 text-xs text-slate-700">
-                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
-                    <select
-                      value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value as any)}
-                      className="bg-transparent focus:outline-hidden font-medium text-slate-700 text-xs"
-                    >
-                      <option value="default">Urutkan: Rekomendasi</option>
-                      <option value="price_asc">Harga: Termurah</option>
-                      <option value="price_desc">Harga: Tertinggi</option>
-                      <option value="name_asc">Nama: A — Z</option>
-                    </select>
-                  </div>
-
+                <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-center gap-3 text-xs">
+                  <span className="text-slate-500 font-medium">Bagi pengelola toko:</span>
                   <button
-                    onClick={() => setInStockOnly(!inStockOnly)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                      inStockOnly
-                        ? 'bg-emerald-50 border-emerald-500 text-emerald-800'
-                        : 'bg-white border-slate-200/80 text-slate-600 hover:border-slate-300'
-                    }`}
+                    onClick={handleNavigateToAdminLogin}
+                    className="px-4 py-2 bg-[#FE8A00] hover:bg-[#e07b00] text-white font-bold rounded-xl transition-all shadow-md shadow-orange-500/20 active:scale-98"
                   >
-                    {inStockOnly ? '✓ Hanya Tersedia' : 'Semua Stok'}
+                    Tambah Produk ke Katalog
                   </button>
                 </div>
               </div>
+            ) : (
+              <>
+                {/* 1. KATEGORI BELANJA DENGAN FOTO VISUAL */}
+                <CategoryVisualCards
+                  categories={categories}
+                  products={products}
+                  selectedCategoryId={selectedCategoryId}
+                  onSelectCategory={setSelectedCategoryId}
+                />
 
-              {allFilteredProducts.length === 0 ? (
-                <div className="bg-white rounded-3xl border border-slate-200/80 p-12 text-center text-slate-400">
-                  <ShoppingBag className="w-12 h-12 mx-auto mb-2 text-slate-300" />
-                  <h3 className="text-sm font-bold text-slate-700">Produk Tidak Ditemukan</h3>
-                  <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                    Coba sesuaikan kata kunci pencarian, ubah filter stok, atau pilih kategori belanja lainnya.
-                  </p>
-                  <button
-                    onClick={() => {
-                      setSearchQuery('');
-                      setSelectedCategoryId('all');
-                      setInStockOnly(false);
-                      setSortBy('default');
-                    }}
-                    className="mt-4 px-4 py-2 bg-emerald-50 text-emerald-700 font-bold text-xs rounded-xl hover:bg-emerald-100 transition-colors"
-                  >
-                    Reset Semua Filter
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {allFilteredProducts.map((product) => (
-                    <ProductCard
-                      key={`all-${product.id}`}
-                      product={product}
-                      onSelect={handleNavigateToProduct}
-                      onQuickAdd={(p) => handleAddToCart(p)}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
+                {/* 2. BAGIAN A: PRODUK TERLARIS (HANYA DITAMPILKAN JIKA ADA PENJUALAN) */}
+                {bestSellerProducts.length > 0 && (
+                  <section className="space-y-4 pt-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                          <Flame className="w-5 h-5 text-amber-500" />
+                          <span>Produk Terlaris</span>
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                            Pilihan Populer
+                          </span>
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Produk paling banyak diminati dan dipesan oleh pelanggan
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {bestSellerProducts.map((product, idx) => (
+                        <ProductCard
+                          key={`bestseller-${product.id}`}
+                          product={product}
+                          badgeLabel={`Terlaris #${idx + 1}`}
+                          badgeColor="amber"
+                          soldCount={salesMap.get(product.id) || 0}
+                          onSelect={handleNavigateToProduct}
+                          onQuickAdd={(p) => handleAddToCart(p)}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* 2. BAGIAN B: PRODUK TERPOPULER (HANYA DITAMPILKAN JIKA ADA VIEW) */}
+                {mostPopularProducts.length > 0 && (
+                  <section className="space-y-4 pt-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                          <TrendingUp className="w-5 h-5 text-blue-600" />
+                          <span>Produk Terpopuler</span>
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                            Banyak Dilihat
+                          </span>
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Produk yang paling sering dilihat dan diminati oleh pengunjung toko
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {mostPopularProducts.map((product) => (
+                        <ProductCard
+                          key={`popular-${product.id}`}
+                          product={product}
+                          badgeLabel="Populer"
+                          badgeColor="blue"
+                          viewCount={product.viewCount || 0}
+                          onSelect={handleNavigateToProduct}
+                          onQuickAdd={(p) => handleAddToCart(p)}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {/* 2. BAGIAN C: SEMUA PRODUK (KATALOG UMUM) */}
+                <section className="space-y-4 pt-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                        <ShoppingBag className="w-5 h-5 text-emerald-700" />
+                        <span>Semua Produk</span>
+                        {selectedCategoryId !== 'all' && (
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                            {categories.find(c => c.id === selectedCategoryId)?.name}
+                          </span>
+                        )}
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Menampilkan {allFilteredProducts.length} produk aktif
+                      </p>
+                    </div>
+
+                    {/* Sorting & Filter Controls */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 bg-white border border-slate-200/80 rounded-xl px-2.5 py-1.5 text-xs text-slate-700">
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                        <select
+                          value={sortBy}
+                          onChange={(e) => setSortBy(e.target.value as any)}
+                          className="bg-transparent focus:outline-hidden font-medium text-slate-700 text-xs"
+                        >
+                          <option value="default">Urutkan: Rekomendasi</option>
+                          <option value="price_asc">Harga: Termurah</option>
+                          <option value="price_desc">Harga: Tertinggi</option>
+                          <option value="name_asc">Nama: A — Z</option>
+                        </select>
+                      </div>
+
+                      <button
+                        onClick={() => setInStockOnly(!inStockOnly)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                          inStockOnly
+                            ? 'bg-emerald-50 border-emerald-500 text-emerald-800'
+                            : 'bg-white border-slate-200/80 text-slate-600 hover:border-slate-300'
+                        }`}
+                      >
+                        {inStockOnly ? '✓ Hanya Tersedia' : 'Semua Stok'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {allFilteredProducts.length === 0 ? (
+                    <div className="bg-white rounded-3xl border border-slate-200/80 p-12 text-center text-slate-400">
+                      <ShoppingBag className="w-12 h-12 mx-auto mb-2 text-slate-300" />
+                      <h3 className="text-sm font-bold text-slate-700">Produk Tidak Ditemukan</h3>
+                      <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                        Coba sesuaikan kata kunci pencarian, ubah filter stok, atau pilih kategori lainnya.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setSearchQuery('');
+                          setSelectedCategoryId('all');
+                          setInStockOnly(false);
+                          setSortBy('default');
+                        }}
+                        className="mt-4 px-4 py-2 bg-emerald-50 text-emerald-700 font-bold text-xs rounded-xl hover:bg-emerald-100 transition-colors"
+                      >
+                        Reset Semua Filter
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {allFilteredProducts.map((product) => (
+                        <ProductCard
+                          key={`all-${product.id}`}
+                          product={product}
+                          onSelect={handleNavigateToProduct}
+                          onQuickAdd={(p) => handleAddToCart(p)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
           </main>
 
           {/* 3. FOOTER MARKETPLACE PROFESIONAL */}
           <Footer
             storeConfig={storeConfig}
             onOpenAffiliate={handleNavigateToAffiliate}
+            onOpenAdminLogin={handleNavigateToAdminLogin}
           />
         </>
       )}
@@ -996,7 +1113,10 @@ export default function App() {
         currentUser={currentUser}
         onLogin={handleLogin}
         onLogout={handleLogout}
-        onSwitchToAdmin={() => setIsAdminView(true)}
+        onSwitchToAdmin={() => {
+          setIsAdminView(true);
+          window.history.pushState({}, '', '/admin');
+        }}
       />
     </div>
   );

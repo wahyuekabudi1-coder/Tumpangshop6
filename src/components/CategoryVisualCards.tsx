@@ -37,6 +37,11 @@ export default function CategoryVisualCards({
     .filter(c => c.isActive)
     .sort((a, b) => a.orderIndex - b.orderIndex);
 
+  // If no categories have been added by admin yet, do not render category section
+  if (activeCategories.length === 0) {
+    return null;
+  }
+
   const totalActiveProducts = products.filter(p => p.isActive).length;
 
   return (
@@ -44,13 +49,13 @@ export default function CategoryVisualCards({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            <span>Kategori Belanja</span>
+            <span>Kategori Produk</span>
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-[#FE8A00]">
-              Pasar Tumpang
+              Pilihan
             </span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Jelajahi aneka ragam sembako, sayuran lereng Bromo, hingga karya UMKM lokal
+            Jelajahi aneka ragam kategori produk pilihan dan berkualitas di Tumpang Shop
           </p>
         </div>
 
