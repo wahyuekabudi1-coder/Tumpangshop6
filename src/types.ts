@@ -18,6 +18,7 @@ export interface Product {
   name: string;
   description: string;
   categoryId: string;
+  subcategoryId?: string;
   price: number;
   originalPrice?: number;
   stock: number;
@@ -55,8 +56,10 @@ export interface AffiliateApplication {
   email: string;
   promotionChannel: string;
   notes?: string;
-  status: 'PENDING' | 'APPROVED';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
   referralCode: string;
+  passwordHash?: string;
+  userId?: string;
   createdAt: string;
 }
 
@@ -115,9 +118,11 @@ export interface Category {
   slug: string;
   description?: string;
   imageUrl?: string;
+  imagePath?: string;
   icon?: string;
   orderIndex: number;
   isActive: boolean;
+  parentId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -131,8 +136,22 @@ export interface CartItem {
   quantity: number;
 }
 
-export type OrderStatus = 'NEW' | 'PROCESSING' | 'PACKED' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED';
-export type PaymentStatus = 'UNPAID' | 'PENDING' | 'WAITING_VERIFICATION' | 'PAID' | 'REJECTED' | 'STANDBY' | 'EXPIRED';
+export type OrderStatus = 
+  | 'NEW'                            // Menunggu Pembayaran
+  | 'PAYMENT_VERIFIED'              // Pembayaran Terverifikasi
+  | 'WAITING_SUPPLIER_CONFIRMATION' // Menunggu Konfirmasi Ketersediaan Pemasok
+  | 'SUPPLIER_PROCESSING'           // Diproses Pemasok
+  | 'PROCESSING'                    // (Alias) Diproses
+  | 'PACKED'                        // (Alias) Dikemas
+  | 'SHIPPED'                       // Dalam Pengiriman (Kargo Udara)
+  | 'IN_TRANSIT_AIR'                // (Alias) Dalam Penerbangan / Logistik Udara
+  | 'DELIVERED'                     // Terkirim
+  | 'COMPLETED'                     // Selesai / Terkirim
+  | 'CANCELLED';                    // Dibatalkan / Refund
+
+export type PaymentStatus = 'UNPAID' | 'PENDING' | 'WAITING_VERIFICATION' | 'PAID' | 'REJECTED' | 'STANDBY' | 'EXPIRED' | 'REFUNDED';
+
+export type ShippingMethod = 'AIR_REGULAR' | 'REGULAR' | 'INSTANT' | 'PICKUP';
 
 export interface OrderItem {
   productId: string;
@@ -152,13 +171,20 @@ export interface Order {
   customerPhone: string;
   customerEmail?: string;
   deliveryAddress: string;
+  customerProvince?: string;
+  customerCity?: string;
   customerDistrict: string;
+  customerPostalCode?: string;
   deliveryNotes?: string;
-  shippingMethod: 'INSTANT' | 'REGULAR' | 'PICKUP';
+  shippingMethod: ShippingMethod;
   shippingCost: number;
+  estimatedAirDeliveryDays?: number; // e.g. 14 days
+  shippingCarrier?: string;
   items: OrderItem[];
   subtotal: number;
   serviceFee: number;
+  discountAmount?: number;
+  uniqueCode?: number; // Kode unik Rp 1 - Rp 200 yang dibuat server
   total: number;
   paymentStatus: PaymentStatus;
   orderStatus: OrderStatus;
@@ -167,8 +193,14 @@ export interface Order {
   paymentLinkUrl?: string;
   paymentGateway?: string;
   paymentReference?: string;
+  artopayPaymentId?: string;
+  artopayCustomerToken?: string;
+  artopayClientSecret?: string;
+  isTestTransaction?: boolean;
+  simulationNote?: string;
   paymentExpiresAt: string;
   trackingNumber?: string;
+  trackingUrl?: string;
   paidAt?: string;
   referralCode?: string;
   affiliateCommission?: OrderAffiliateSnapshot;
@@ -184,6 +216,8 @@ export interface StoreConfig {
   isOpen: boolean;
   minOrderAmount: number;
   defaultDeliveryFee: number;
+  airFreightDeliveryFee?: number; // Biaya Pengiriman Reguler via Udara
+  airFreightEstimatedDays?: number; // Estimasi hari (default: 14 hari)
   serviceFee: number;
   defaultAffiliateCommissionRate: number; // Standard default 15%
   qrisImageUrl?: string;

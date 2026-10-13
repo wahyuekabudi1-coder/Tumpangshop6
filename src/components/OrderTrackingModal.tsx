@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Order, PaymentStatus } from '../types';
 import { 
-  X, Search, Truck, CheckCircle2, Clock, AlertCircle, 
-  Package, ExternalLink, CreditCard, ShieldCheck, ArrowRight 
+  X, Search, Plane, CheckCircle2, Clock, AlertCircle, 
+  Package, ExternalLink, CreditCard, ShieldCheck, ArrowRight,
+  MapPin, Phone, Copy, Info, AlertTriangle
 } from 'lucide-react';
+import { getOrderStatusInfo, formatShippingMethod, ORDER_TIMELINE_STEPS, AIR_SHIPPING_DISCLAIMER } from '../lib/orderStatusHelper';
 
 interface OrderTrackingModalProps {
   isOpen: boolean;
@@ -25,28 +27,13 @@ export default function OrderTrackingModal({
     e.preventDefault();
     const query = searchNumber.trim().toUpperCase();
     if (!query) return;
-    const found = orders.find(o => o.orderNumber.toUpperCase().includes(query) || o.id === query);
+    const found = orders.find(
+      o => o.orderNumber.toUpperCase().includes(query) || 
+           o.id === query || 
+           o.customerPhone.includes(query)
+    );
     if (found) {
       setSelectedOrder(found);
-    }
-  };
-
-  const getOrderStatusBadge = (status: Order['orderStatus']) => {
-    switch (status) {
-      case 'NEW':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">Menunggu Diproses</span>;
-      case 'PROCESSING':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800">Sedang Disiapkan</span>;
-      case 'PACKED':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800">Siap Dikirim</span>;
-      case 'SHIPPED':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800">Dalam Perjalanan Kurir</span>;
-      case 'COMPLETED':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">Selesai / Diterima</span>;
-      case 'CANCELLED':
-        return <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800">Dibatalkan</span>;
-      default:
-        return null;
     }
   };
 
@@ -54,28 +41,35 @@ export default function OrderTrackingModal({
     switch (status) {
       case 'PENDING':
       case 'STANDBY':
+      case 'UNPAID':
         return (
-          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300">
             Pending (Menunggu Pembayaran)
           </span>
         );
       case 'WAITING_VERIFICATION':
         return (
-          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">
+          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-800 border border-blue-200">
             Menunggu Verifikasi Gateway
           </span>
         );
       case 'PAID':
         return (
-          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 flex items-center gap-1">
+          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-900 border border-emerald-300 flex items-center gap-1">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 inline" />
             Lunas (Verified Paid)
+          </span>
+        );
+      case 'REFUNDED':
+        return (
+          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-purple-50 text-purple-800 border border-purple-200">
+            Refund (Pengembalian Dana)
           </span>
         );
       case 'REJECTED':
       case 'EXPIRED':
         return (
-          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800">
+          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-800">
             Kedaluwarsa / Ditolak
           </span>
         );
@@ -93,11 +87,17 @@ export default function OrderTrackingModal({
       <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col relative max-h-[92vh]">
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 shrink-0">
-          <div className="flex items-center gap-2">
-            <Truck className="w-5 h-5 text-emerald-700" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-orange-100 text-[#FE8A00] flex items-center justify-center">
+              <Plane className="w-5 h-5" />
+            </div>
             <div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900">Lacak Status Pesanan & Pembayaran</h2>
-              <p className="text-xs text-slate-500">Cari nomor pesanan Anda (contoh: TS-2026...)</p>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                Lacak Status Pesanan & Kargo Udara
+              </h2>
+              <p className="text-xs text-slate-500">
+                Cari dengan Nomor Pesanan (TS-...) atau Nomor WhatsApp
+              </p>
             </div>
           </div>
           <button
@@ -118,13 +118,13 @@ export default function OrderTrackingModal({
                 type="text"
                 value={searchNumber}
                 onChange={(e) => setSearchNumber(e.target.value)}
-                placeholder="Masukkan Nomor Pesanan (TS-...)"
-                className="w-full pl-10 pr-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:border-emerald-600 focus:outline-hidden"
+                placeholder="Masukkan Nomor Pesanan (TS-...) atau No. HP..."
+                className="w-full pl-10 pr-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden"
               />
             </div>
             <button
               type="submit"
-              className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs sm:text-sm font-semibold transition-colors"
+              className="px-4 py-2 bg-[#FE8A00] hover:bg-[#e07b00] text-white rounded-xl text-xs sm:text-sm font-semibold transition-colors"
             >
               Cari
             </button>
@@ -142,19 +142,79 @@ export default function OrderTrackingModal({
           ) : selectedOrder ? (
             <div className="space-y-4">
               {/* Order Card Header */}
-              <div className="p-4 bg-emerald-50/60 border border-emerald-200/60 rounded-2xl flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <div className="text-xs text-emerald-800 font-medium">Nomor Pesanan</div>
-                  <div className="text-base sm:text-lg font-black text-slate-900">{selectedOrder.orderNumber}</div>
-                  <div className="text-[11px] text-slate-500">
-                    {new Date(selectedOrder.createdAt).toLocaleString('id-ID')}
+              {(() => {
+                const sInfo = getOrderStatusInfo(selectedOrder.orderStatus);
+                return (
+                  <div className="p-4 bg-orange-50/50 border border-orange-200/60 rounded-2xl flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs text-slate-500 font-medium">Nomor Pesanan</div>
+                      <div className="text-base sm:text-lg font-black text-slate-900">{selectedOrder.orderNumber}</div>
+                      <div className="text-[11px] text-slate-500">
+                        {new Date(selectedOrder.createdAt).toLocaleString('id-ID')}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${sInfo.badgeBg} ${sInfo.badgeText} ${sInfo.badgeBorder}`}>
+                        {sInfo.label}
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-600">
+                        {formatShippingMethod(selectedOrder.shippingMethod)}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  {getOrderStatusBadge(selectedOrder.orderStatus)}
-                  <span className="text-[11px] font-semibold text-slate-600">
-                    Metode: {selectedOrder.shippingMethod === 'INSTANT' ? 'Kurir Prioritas' : selectedOrder.shippingMethod === 'PICKUP' ? 'Ambil di Toko' : 'Kurir Reguler'}
+                );
+              })()}
+
+              {/* Air Cargo Tracking & Status Info */}
+              <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Plane className="w-4 h-4 text-[#FE8A00]" />
+                    <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                      Jalur Kargo Udara & Estimasi
+                    </span>
+                  </div>
+                  <span className="text-xs font-semibold text-slate-600">
+                    Estimasi ~{selectedOrder.estimatedAirDeliveryDays || 14} hari kalender
                   </span>
+                </div>
+
+                {selectedOrder.trackingNumber ? (
+                  <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1.5 border border-slate-200">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Nomor Resi / AWB:</span>
+                      <span className="font-mono font-black text-sm text-[#FE8A00]">{selectedOrder.trackingNumber}</span>
+                    </div>
+                    {selectedOrder.shippingCarrier && (
+                      <div className="flex justify-between text-slate-600">
+                        <span>Ekspedisi / Maskapai:</span>
+                        <span className="font-semibold">{selectedOrder.shippingCarrier}</span>
+                      </div>
+                    )}
+                    {selectedOrder.trackingUrl && (
+                      <div className="pt-1 text-right">
+                        <a
+                          href={selectedOrder.trackingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:underline"
+                        >
+                          <span>Buka Tautan Pelacakan Maskapai</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-500 leading-relaxed">
+                    Resi kargo udara akan otomatis diperbarui begitu barang selesai diproses oleh pemasok dan diserahkan ke kargo.
+                  </div>
+                )}
+
+                {/* Estimate disclaimer */}
+                <div className="text-[11px] text-slate-500 bg-orange-50/40 p-2.5 rounded-xl border border-orange-100 flex items-start gap-1.5 leading-relaxed">
+                  <Info className="w-3.5 h-3.5 text-[#FE8A00] shrink-0 mt-0.5" />
+                  <span>{AIR_SHIPPING_DISCLAIMER}</span>
                 </div>
               </div>
 
@@ -162,7 +222,7 @@ export default function OrderTrackingModal({
               <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
-                    <CreditCard className="w-4 h-4 text-emerald-700" />
+                    <CreditCard className="w-4 h-4 text-[#FE8A00]" />
                     <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                       Status Pembayaran Gateway
                     </span>
@@ -170,7 +230,6 @@ export default function OrderTrackingModal({
                   {getPaymentStatusBadge(selectedOrder.paymentStatus)}
                 </div>
 
-                {/* Gateway Payment Link or Instructions */}
                 {selectedOrder.paymentStatus !== 'PAID' && (
                   <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-2 border border-slate-100">
                     {selectedOrder.paymentLinkUrl ? (
@@ -182,7 +241,7 @@ export default function OrderTrackingModal({
                           href={selectedOrder.paymentLinkUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold transition-all"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#FE8A00] hover:bg-[#e07b00] text-white rounded-xl font-bold transition-all shadow-xs"
                         >
                           <span>Buka Payment Link Gateway</span>
                           <ExternalLink className="w-3.5 h-3.5" />
@@ -206,7 +265,7 @@ export default function OrderTrackingModal({
                   <div className="p-3 bg-emerald-50 text-emerald-900 rounded-xl text-xs flex items-center gap-2 border border-emerald-200">
                     <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
                     <span>
-                      Pembayaran telah berhasil diverifikasi oleh backend webhook resmi gateway ({selectedOrder.paymentGateway || 'Payment Gateway'}).
+                      Pembayaran telah berhasil diverifikasi resmi ({selectedOrder.paymentGateway || 'Payment Gateway'}).
                     </span>
                   </div>
                 )}
@@ -217,8 +276,8 @@ export default function OrderTrackingModal({
                 <div className="font-bold text-slate-800 text-sm">Rincian Pengiriman</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-600">
                   <div><strong>Penerima:</strong> {selectedOrder.customerName} ({selectedOrder.customerPhone})</div>
-                  <div><strong>Kecamatan:</strong> {selectedOrder.customerDistrict}</div>
-                  <div className="sm:col-span-2"><strong>Alamat:</strong> {selectedOrder.deliveryAddress}</div>
+                  <div><strong>Wilayah:</strong> {selectedOrder.customerDistrict}, {selectedOrder.customerCity || ''}</div>
+                  <div className="sm:col-span-2"><strong>Alamat Lengkap:</strong> {selectedOrder.deliveryAddress}</div>
                   {selectedOrder.deliveryNotes && (
                     <div className="sm:col-span-2 text-amber-800 bg-amber-50 p-2 rounded-lg">
                       <strong>Catatan:</strong> {selectedOrder.deliveryNotes}
@@ -236,7 +295,7 @@ export default function OrderTrackingModal({
                       <div>
                         <div className="font-semibold text-slate-800">{item.name}</div>
                         {item.variationInfo && (
-                          <div className="text-[11px] text-emerald-700">{item.variationInfo}</div>
+                          <div className="text-[11px] text-[#FE8A00]">{item.variationInfo}</div>
                         )}
                         <div className="text-slate-500">
                           {item.quantity} x Rp {item.price.toLocaleString('id-ID')} ({item.unit})
@@ -255,16 +314,18 @@ export default function OrderTrackingModal({
                     <span>Rp {selectedOrder.subtotal.toLocaleString('id-ID')}</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>Ongkir:</span>
+                    <span>Pengiriman Reguler via Udara:</span>
                     <span>Rp {selectedOrder.shippingCost.toLocaleString('id-ID')}</span>
                   </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>Biaya Layanan:</span>
-                    <span>Rp {selectedOrder.serviceFee.toLocaleString('id-ID')}</span>
-                  </div>
+                  {selectedOrder.serviceFee > 0 && (
+                    <div className="flex justify-between text-slate-600">
+                      <span>Biaya Layanan:</span>
+                      <span>Rp {selectedOrder.serviceFee.toLocaleString('id-ID')}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-slate-900 font-black text-sm pt-1 border-t border-slate-100">
                     <span>Total Pesanan:</span>
-                    <span className="text-emerald-800 text-base">Rp {selectedOrder.total.toLocaleString('id-ID')}</span>
+                    <span className="text-[#FE8A00] text-base">Rp {selectedOrder.total.toLocaleString('id-ID')}</span>
                   </div>
                 </div>
               </div>
@@ -280,7 +341,7 @@ export default function OrderTrackingModal({
                         onClick={() => setSelectedOrder(o)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-medium border shrink-0 transition-all ${
                           selectedOrder.id === o.id
-                            ? 'border-emerald-600 bg-emerald-50 text-emerald-800 font-bold'
+                            ? 'border-[#FE8A00] bg-orange-50 text-[#FE8A00] font-bold'
                             : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                         }`}
                       >

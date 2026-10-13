@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { AffiliateApplication, Order } from '../../types';
+import { getAffiliateClicks } from '../../lib/affiliateAttribution';
 import { 
   ArrowLeft, ChevronRight, Award, Phone, Mail, Globe, 
-  Copy, Check, ExternalLink, DollarSign, ShoppingBag, Clock
+  Copy, Check, ExternalLink, DollarSign, ShoppingBag, Clock,
+  MousePointerClick, Share2
 } from 'lucide-react';
 
 interface AdminAffiliateDetailPageProps {
@@ -23,12 +25,17 @@ export default function AdminAffiliateDetailPage({
   const [copiedLink, setCopiedLink] = useState(false);
 
   const promoLink = `${window.location.origin}/?ref=${affiliate.referralCode}`;
+  const catalogPromoLink = `${window.location.origin}/products?ref=${affiliate.referralCode}`;
 
   const handleCopyPromoLink = () => {
     navigator.clipboard.writeText(promoLink);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
   };
+
+  const validClicks = useMemo(() => {
+    return getAffiliateClicks(affiliate.referralCode);
+  }, [affiliate.referralCode]);
 
   const totalReferralCommission = referralOrders.reduce((sum, ord) => {
     return sum + (ord.affiliateCommission?.totalCommission || 0);
@@ -41,7 +48,14 @@ export default function AdminAffiliateDetailPage({
     return sum;
   }, 0);
 
-  const pendingCommission = totalReferralCommission - paidCommission;
+  const approvedCommission = referralOrders.reduce((sum, ord) => {
+    if (ord.affiliateCommission?.status === 'APPROVED') {
+      return sum + ord.affiliateCommission.totalCommission;
+    }
+    return sum;
+  }, 0);
+
+  const pendingCommission = totalReferralCommission - paidCommission - approvedCommission;
 
   const waNumber = affiliate.phone.replace(/[^0-9]/g, '');
   const cleanWa = waNumber.startsWith('0') ? '62' + waNumber.slice(1) : waNumber;
@@ -86,10 +100,10 @@ export default function AdminAffiliateDetailPage({
           ) : (
             <button
               type="button"
-              onClick={() => onUpdateStatus(affiliate.id, 'PENDING')}
-              className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition-colors"
+              onClick={() => onUpdateStatus(affiliate.id, 'REJECTED')}
+              className="px-3.5 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold rounded-lg transition-colors"
             >
-              Tinjau Ulang Kemitraan
+              Nonaktifkan / Tolak
             </button>
           )}
 
@@ -108,7 +122,7 @@ export default function AdminAffiliateDetailPage({
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 space-y-6">
         {/* Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Komisi Dihasilkan</span>
             <div className="text-xl font-black text-[#FE8A00] mt-1 font-mono">
@@ -117,23 +131,30 @@ export default function AdminAffiliateDetailPage({
           </div>
 
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Komisi Telah Dicairkan</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Komisi Disetujui</span>
             <div className="text-xl font-black text-emerald-700 mt-1 font-mono">
+              Rp {approvedCommission.toLocaleString('id-ID')}
+            </div>
+          </div>
+
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Telah Dicairkan</span>
+            <div className="text-xl font-black text-blue-700 mt-1 font-mono">
               Rp {paidCommission.toLocaleString('id-ID')}
             </div>
           </div>
 
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Komisi Menunggu / Pending</span>
-            <div className="text-xl font-black text-amber-700 mt-1 font-mono">
-              Rp {pendingCommission.toLocaleString('id-ID')}
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Pesanan Teratribusi</span>
+            <div className="text-xl font-black text-slate-900 mt-1">
+              {referralOrders.length} transaksi
             </div>
           </div>
 
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Pesanan Referral Berhasil</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Klik Valid Terlacak</span>
             <div className="text-xl font-black text-slate-900 mt-1">
-              {referralOrders.length} transaksi
+              {validClicks.length} klik
             </div>
           </div>
         </div>
@@ -142,7 +163,7 @@ export default function AdminAffiliateDetailPage({
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4">
           <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
             <Award className="w-4 h-4 text-[#FE8A00]" />
-            <span>Informasi Mitra & Tautan Referral</span>
+            <span>Informasi Mitra & Format Tautan Otomatis</span>
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
@@ -150,9 +171,12 @@ export default function AdminAffiliateDetailPage({
               <span className="text-slate-400 font-bold uppercase text-[10px]">Status Kemitraan</span>
               <div className="mt-1">
                 <span className={`inline-block px-2.5 py-0.5 rounded text-xs font-bold ${
-                  affiliate.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                  affiliate.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : 
+                  affiliate.status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                  'bg-amber-100 text-amber-800'
                 }`}>
-                  {affiliate.status === 'APPROVED' ? 'DISETUJUI (Aktif)' : 'MENUNGGU VERIFIKASI'}
+                  {affiliate.status === 'APPROVED' ? 'DISETUJUI (Aktif)' : 
+                   affiliate.status === 'REJECTED' ? 'DITOLAK / NONAKTIF' : 'MENUNGGU VERIFIKASI'}
                 </span>
               </div>
             </div>
@@ -177,7 +201,7 @@ export default function AdminAffiliateDetailPage({
             </div>
 
             <div>
-              <span className="text-slate-400 font-bold uppercase text-[10px]">Kode & Tautan Referral</span>
+              <span className="text-slate-400 font-bold uppercase text-[10px]">Kode & Tautan Toko Utama</span>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="font-mono font-black text-sm text-[#FE8A00] bg-orange-100 px-2.5 py-1 rounded-lg border border-orange-200">
                   {affiliate.referralCode}
@@ -191,6 +215,9 @@ export default function AdminAffiliateDetailPage({
                   <span>{copiedLink ? 'Tersalin' : 'Salin Tautan'}</span>
                 </button>
               </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Format produk otomatis: <code className="text-slate-600 bg-slate-100 px-1 py-0.5 rounded">/products/slug-produk?ref={affiliate.referralCode}</code>
+              </p>
             </div>
           </div>
         </div>
@@ -203,7 +230,7 @@ export default function AdminAffiliateDetailPage({
                 Riwayat Transaksi Referral ({referralOrders.length} Pesanan)
               </h2>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Daftar semua pesanan pembeli yang menggunakan kode referral {affiliate.referralCode}
+                Daftar semua pesanan pembeli yang teratribusi ke mitra {affiliate.referralCode}
               </p>
             </div>
           </div>

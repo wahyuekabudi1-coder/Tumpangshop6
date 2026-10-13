@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { Order, Product } from '../../types';
 import { 
   ArrowLeft, ChevronRight, CheckCircle2, Clock, AlertTriangle, 
-  Truck, CreditCard, DollarSign, User, MapPin, Phone, Mail, 
-  ExternalLink, Printer, Share2, Check, X, ShieldAlert, Award, FileText
+  Plane, CreditCard, DollarSign, User, MapPin, Phone, Mail, 
+  ExternalLink, Printer, Share2, Check, X, ShieldAlert, Award, FileText,
+  Save, Copy, Info
 } from 'lucide-react';
+import { getOrderStatusInfo, formatShippingMethod } from '../../lib/orderStatusHelper';
 
 interface AdminOrderDetailPageProps {
   order: Order;
@@ -13,6 +15,7 @@ interface AdminOrderDetailPageProps {
   onUpdateOrderStatus: (orderId: string, status: Order['orderStatus']) => void;
   onUpdatePaymentStatus: (orderId: string, status: Order['paymentStatus']) => void;
   onUpdateCommissionStatus?: (orderId: string, status: 'PENDING' | 'APPROVED' | 'PAID' | 'CANCELLED') => void;
+  onUpdateTrackingInfo?: (orderId: string, trackingNumber: string, shippingCarrier?: string, trackingUrl?: string) => void;
   onViewCustomer?: (customerPhoneOrName: string) => void;
 }
 
@@ -23,10 +26,15 @@ export default function AdminOrderDetailPage({
   onUpdateOrderStatus,
   onUpdatePaymentStatus,
   onUpdateCommissionStatus,
+  onUpdateTrackingInfo,
   onViewCustomer
 }: AdminOrderDetailPageProps) {
   const [copiedLink, setCopiedLink] = useState(false);
-  const [statusNote, setStatusNote] = useState('');
+  const [trackingNumberInput, setTrackingNumberInput] = useState(order.trackingNumber || '');
+  const [carrierInput, setCarrierInput] = useState(order.shippingCarrier || 'Kargo Udara Reguler');
+  const [trackingUrlInput, setTrackingUrlInput] = useState(order.trackingUrl || '');
+  const [isSavingTracking, setIsSavingTracking] = useState(false);
+  const [trackingSavedSuccess, setTrackingSavedSuccess] = useState(false);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
@@ -38,11 +46,22 @@ export default function AdminOrderDetailPage({
     window.print();
   };
 
+  const handleSaveTracking = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onUpdateTrackingInfo) return;
+    setIsSavingTracking(true);
+    onUpdateTrackingInfo(order.id, trackingNumberInput.trim(), carrierInput.trim(), trackingUrlInput.trim());
+    setIsSavingTracking(false);
+    setTrackingSavedSuccess(true);
+    setTimeout(() => setTrackingSavedSuccess(false), 2500);
+  };
+
   const waNumber = order.customerPhone.replace(/[^0-9]/g, '');
   const cleanWa = waNumber.startsWith('0') ? '62' + waNumber.slice(1) : waNumber;
+  const statusInfo = getOrderStatusInfo(order.orderStatus);
   const waMessage = encodeURIComponent(
     `Halo kak ${order.customerName}, konfirmasi dari Tumpang Shop terkait pesanan #${order.orderNumber}. ` +
-    `Status pesanan saat ini: ${order.orderStatus}, status pembayaran: ${order.paymentStatus}. Terima kasih!`
+    `Status operasional saat ini: ${statusInfo.label}, status pembayaran: ${order.paymentStatus}. Terima kasih!`
   );
   const waUrl = `https://wa.me/${cleanWa}?text=${waMessage}`;
 
@@ -65,9 +84,9 @@ export default function AdminOrderDetailPage({
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
               <span className="cursor-pointer hover:underline" onClick={onBack}>Seller Centre</span>
               <ChevronRight className="w-3 h-3 text-slate-400" />
-              <span className="cursor-pointer hover:underline" onClick={onBack}>Pesanan</span>
+              <span className="cursor-pointer hover:underline" onClick={onBack}>Pesanan Impor</span>
               <ChevronRight className="w-3 h-3 text-slate-400" />
-              <span className="font-bold text-slate-800">Rincian Pesanan</span>
+              <span className="font-bold text-slate-800">Rincian & Kargo Udara</span>
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
@@ -114,27 +133,16 @@ export default function AdminOrderDetailPage({
 
       {/* Main Page Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 space-y-6">
+        
         {/* Status Banner Summary */}
         <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-4">
             <div>
-              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Status Operasional Pesanan</div>
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Status Operasional Pesanan Impor</div>
               <div className="flex items-center gap-2 mt-1">
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                  order.orderStatus === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
-                  order.orderStatus === 'SHIPPED' ? 'bg-blue-100 text-blue-800' :
-                  order.orderStatus === 'PACKED' ? 'bg-indigo-100 text-indigo-800' :
-                  order.orderStatus === 'PROCESSING' ? 'bg-amber-100 text-amber-800' :
-                  order.orderStatus === 'CANCELLED' ? 'bg-rose-100 text-rose-800' :
-                  'bg-orange-100 text-[#FE8A00]'
-                }`}>
-                  <span className="w-2 h-2 rounded-full bg-current" />
-                  {order.orderStatus === 'NEW' ? 'Pesanan Baru' :
-                   order.orderStatus === 'PROCESSING' ? 'Diproses Penjual' :
-                   order.orderStatus === 'PACKED' ? 'Sedang Dikemas' :
-                   order.orderStatus === 'SHIPPED' ? 'Dalam Pengiriman' :
-                   order.orderStatus === 'COMPLETED' ? 'Pesanan Selesai' :
-                   'Pesanan Dibatalkan'}
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border ${statusInfo.badgeBg} ${statusInfo.badgeText} ${statusInfo.badgeBorder}`}>
+                  <span className={`w-2 h-2 rounded-full ${statusInfo.dotColor}`} />
+                  {statusInfo.label}
                 </span>
                 <span className="text-xs text-slate-400">• Dibuat: {new Date(order.createdAt).toLocaleString('id-ID')}</span>
               </div>
@@ -147,12 +155,14 @@ export default function AdminOrderDetailPage({
                   order.paymentStatus === 'PAID' ? 'bg-emerald-100 text-emerald-800' :
                   order.paymentStatus === 'WAITING_VERIFICATION' ? 'bg-blue-100 text-blue-800' :
                   order.paymentStatus === 'EXPIRED' ? 'bg-slate-100 text-slate-700' :
+                  order.paymentStatus === 'REFUNDED' ? 'bg-purple-100 text-purple-800' :
                   order.paymentStatus === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
                   'bg-amber-100 text-amber-800'
                 }`}>
                   <CreditCard className="w-3.5 h-3.5" />
                   {order.paymentStatus === 'PAID' ? 'LUNAS (Paid)' :
                    order.paymentStatus === 'WAITING_VERIFICATION' ? 'Menunggu Verifikasi Gateway' :
+                   order.paymentStatus === 'REFUNDED' ? 'Refunded' :
                    order.paymentStatus === 'EXPIRED' ? 'Kedaluwarsa' :
                    order.paymentStatus === 'REJECTED' ? 'Ditolak' :
                    'Menunggu Pembayaran (Pending)'}
@@ -169,18 +179,21 @@ export default function AdminOrderDetailPage({
           {/* Quick Status Control Selectors */}
           <div className="flex flex-wrap items-center gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
             <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Ubah Status Pesanan</label>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                Ubah Alur Status Pesanan
+              </label>
               <select
                 value={order.orderStatus}
                 onChange={(e) => onUpdateOrderStatus(order.id, e.target.value as any)}
                 className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-bold text-slate-800 focus:outline-hidden focus:border-[#FE8A00]"
               >
-                <option value="NEW">Baru</option>
-                <option value="PROCESSING">Diproses</option>
-                <option value="PACKED">Dikemas</option>
-                <option value="SHIPPED">Dikirim</option>
-                <option value="COMPLETED">Selesai (Completed)</option>
-                <option value="CANCELLED">Dibatalkan</option>
+                <option value="NEW">1. Menunggu Pembayaran</option>
+                <option value="PAYMENT_VERIFIED">2. Pembayaran Terverifikasi</option>
+                <option value="WAITING_SUPPLIER_CONFIRMATION">3. Menunggu Konfirmasi Pemasok</option>
+                <option value="SUPPLIER_PROCESSING">4. Diproses Pemasok</option>
+                <option value="IN_TRANSIT_AIR">5. Dalam Pengiriman (Kargo Udara)</option>
+                <option value="DELIVERED">6. Terkirim (Selesai)</option>
+                <option value="CANCELLED">7. Dibatalkan / Refund</option>
               </select>
             </div>
 
@@ -194,8 +207,9 @@ export default function AdminOrderDetailPage({
                 <option value="PENDING">Pending (Menunggu)</option>
                 <option value="WAITING_VERIFICATION">Verifikasi Gateway</option>
                 <option value="PAID">Lunas (Paid)</option>
+                <option value="REFUNDED">Refund (Dana Dikembalikan)</option>
+                <option value="REJECTED">Ditolak / Dibatalkan</option>
                 <option value="EXPIRED">Kedaluwarsa</option>
-                <option value="FAILED">Gagal</option>
               </select>
             </div>
           </div>
@@ -205,12 +219,95 @@ export default function AdminOrderDetailPage({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Content (Left 2 cols) */}
           <div className="lg:col-span-2 space-y-6">
+            
+            {/* Air Cargo Tracking & Management Card */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Plane className="w-5 h-5 text-[#FE8A00]" />
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">
+                      Manajemen Kargo Udara & Nomor Resi AWB
+                    </h2>
+                    <p className="text-[11px] text-slate-400">
+                      Input nomor pelacakan resmi kargo udara setelah pemasok mengirimkan pesanan
+                    </p>
+                  </div>
+                </div>
+
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-[#FE8A00]">
+                  Estimasi: ~{order.estimatedAirDeliveryDays || 14} hari kalender
+                </span>
+              </div>
+
+              <form onSubmit={handleSaveTracking} className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">
+                      Nomor Resi / AWB Kargo Udara
+                    </label>
+                    <input
+                      type="text"
+                      value={trackingNumberInput}
+                      onChange={(e) => setTrackingNumberInput(e.target.value)}
+                      placeholder="Contoh: AWB-ID89234812"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00] font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">
+                      Ekspedisi / Maskapai Kargo
+                    </label>
+                    <input
+                      type="text"
+                      value={carrierInput}
+                      onChange={(e) => setCarrierInput(e.target.value)}
+                      placeholder="Contoh: Garuda Cargo / SF Express / Air Regular"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00] text-xs"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="font-bold text-slate-700 block mb-1">
+                      Tautan Pelacakan Resmi (Tracking URL)
+                    </label>
+                    <input
+                      type="url"
+                      value={trackingUrlInput}
+                      onChange={(e) => setTrackingUrlInput(e.target.value)}
+                      placeholder="https://track.aircargo.com/..."
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00] text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <div className="text-[11px] text-slate-500">
+                    {trackingSavedSuccess && (
+                      <span className="text-emerald-600 font-bold flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5" /> Data pelacakan berhasil disimpan & dapat dilihat pelanggan!
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isSavingTracking}
+                    className="px-4 py-2 bg-[#FE8A00] hover:bg-[#e07b00] text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-xs"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Simpan Data Resi</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
             {/* Products Table Card */}
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Daftar Produk yang Dipesan ({order.items.length} item)</span>
+                  <span>Daftar Produk Impor yang Dipesan ({order.items.length} item)</span>
                 </h2>
                 <span className="text-xs font-semibold text-slate-500">
                   Total Unit: {order.items.reduce((s, it) => s + it.quantity, 0)} pcs
@@ -219,82 +316,72 @@ export default function AdminOrderDetailPage({
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50/80 text-slate-600 font-semibold border-b border-slate-200 text-[11px] uppercase tracking-wider">
+                  <thead className="bg-slate-50/70 text-slate-500 uppercase tracking-wider text-[10px] font-bold border-b border-slate-100">
                     <tr>
-                      <th className="py-2.5 px-3">Produk</th>
-                      <th className="py-2.5 px-3">SKU / Varian</th>
-                      <th className="py-2.5 px-3 text-right">Harga Satuan</th>
-                      <th className="py-2.5 px-3 text-center">Jumlah</th>
+                      <th className="py-2.5 px-3">Produk & SKU</th>
+                      <th className="py-2.5 px-3">Harga Satuan</th>
+                      <th className="py-2.5 px-3">Jumlah</th>
                       <th className="py-2.5 px-3 text-right">Subtotal</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {order.items.map((it, idx) => {
-                      const matchedProd = products.find(p => p.id === it.productId);
-                      const img = matchedProd?.images?.[0] || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=200&auto=format&fit=crop&q=80';
-                      return (
-                        <tr key={idx} className="hover:bg-slate-50/50">
-                          <td className="py-3 px-3">
-                            <div className="flex items-center gap-3">
-                              <img
-                                src={img}
-                                alt={it.name}
-                                className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0"
-                              />
-                              <div>
-                                <div className="font-bold text-slate-900 line-clamp-1">{it.name}</div>
-                                {it.variationInfo && (
-                                  <div className="text-[11px] text-[#FE8A00] font-semibold">{it.variationInfo}</div>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-3 font-mono text-[11px] text-slate-500">
-                            {it.sku || matchedProd?.sku || '-'}
-                          </td>
-                          <td className="py-3 px-3 text-right font-mono font-medium text-slate-700">
-                            Rp {it.price.toLocaleString('id-ID')}
-                          </td>
-                          <td className="py-3 px-3 text-center font-bold text-slate-900">
-                            {it.quantity}
-                          </td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">
-                            Rp {(it.price * it.quantity).toLocaleString('id-ID')}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {order.items.map((it, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/50">
+                        <td className="py-3 px-3">
+                          <div className="font-bold text-slate-900">{it.name}</div>
+                          {it.variationInfo && (
+                            <div className="text-[11px] text-[#FE8A00] font-medium">{it.variationInfo}</div>
+                          )}
+                          <div className="font-mono text-[10px] text-slate-400">{it.sku}</div>
+                        </td>
+                        <td className="py-3 px-3 font-semibold text-slate-700">
+                          Rp {it.price.toLocaleString('id-ID')}
+                        </td>
+                        <td className="py-3 px-3 font-bold text-slate-900">
+                          {it.quantity} {it.unit}
+                        </td>
+                        <td className="py-3 px-3 font-black text-slate-900 text-right">
+                          Rp {it.subtotal.toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
 
-              {/* Financial Calculation Breakdown */}
-              <div className="pt-4 border-t border-slate-200 flex flex-col items-end gap-1.5 text-xs">
-                <div className="flex items-center justify-between w-64 text-slate-600">
+              {/* Total Calculation */}
+              <div className="border-t border-slate-200 pt-3 space-y-2 text-xs">
+                <div className="flex justify-between text-slate-600">
                   <span>Subtotal Produk:</span>
-                  <span className="font-mono font-medium">Rp {order.subtotal.toLocaleString('id-ID')}</span>
+                  <span className="font-bold text-slate-900">Rp {order.subtotal.toLocaleString('id-ID')}</span>
                 </div>
-                <div className="flex items-center justify-between w-64 text-slate-600">
-                  <span>Ongkos Kirim ({order.shippingMethod}):</span>
-                  <span className="font-mono font-medium">Rp {order.shippingCost.toLocaleString('id-ID')}</span>
+                <div className="flex justify-between text-slate-600">
+                  <span>Pengiriman Reguler via Udara:</span>
+                  <span className="font-bold text-slate-900">Rp {order.shippingCost.toLocaleString('id-ID')}</span>
                 </div>
-                {order.serviceFee ? (
-                  <div className="flex items-center justify-between w-64 text-slate-600">
-                    <span>Biaya Layanan:</span>
-                    <span className="font-mono font-medium">Rp {order.serviceFee.toLocaleString('id-ID')}</span>
+                {order.serviceFee > 0 && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Biaya Layanan & Pemeliharaan:</span>
+                    <span className="font-bold text-slate-900">Rp {order.serviceFee.toLocaleString('id-ID')}</span>
                   </div>
-                ) : null}
-                <div className="flex items-center justify-between w-64 pt-2 border-t border-slate-200 text-sm font-black text-slate-900">
-                  <span>Total Tagihan:</span>
-                  <span className="font-mono text-[#FE8A00] text-base">Rp {order.total.toLocaleString('id-ID')}</span>
+                )}
+                {order.discountAmount && order.discountAmount > 0 && (
+                  <div className="flex justify-between text-emerald-700">
+                    <span>Diskon / Potongan:</span>
+                    <span className="font-bold">- Rp {order.discountAmount.toLocaleString('id-ID')}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-slate-900 font-black text-sm pt-2 border-t border-slate-100">
+                  <span>Total Akhir Pesanan:</span>
+                  <span className="text-[#FE8A00] text-base">Rp {order.total.toLocaleString('id-ID')}</span>
                 </div>
               </div>
             </div>
 
-            {/* Affiliate Referral Snapshot & Commission Audit Card */}
+            {/* Affiliate Commission Audit (If applicable) */}
             {commissionSnap ? (
-              <div className="bg-white rounded-2xl border-2 border-orange-200 p-5 shadow-2xs space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-orange-100 pb-3">
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div className="flex items-center gap-2">
                     <Award className="w-5 h-5 text-[#FE8A00]" />
                     <div>
@@ -302,33 +389,27 @@ export default function AdminOrderDetailPage({
                         Audit Komisi Affiliate (Snapshot Permanen)
                       </h3>
                       <p className="text-[11px] text-slate-500">
-                        Dihitung otomatis saat pesanan dibuat. Nilai tidak dapat diubah oleh konfigurasi baru.
+                        Dihitung otomatis saat pesanan dibuat berdasarkan last-click attribution
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500">Kode Referral:</span>
-                    <span className="font-mono font-black text-sm bg-orange-100 text-[#FE8A00] px-2.5 py-0.5 rounded-lg border border-orange-200">
-                      {commissionSnap.referralCode}
-                    </span>
-                  </div>
+                  <span className="font-mono font-black text-sm bg-orange-100 text-[#FE8A00] px-2.5 py-0.5 rounded-lg border border-orange-200">
+                    {commissionSnap.referralCode}
+                  </span>
                 </div>
 
-                {/* Mitra info & overall commission status */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-orange-50/50 p-3.5 rounded-xl border border-orange-100 text-xs">
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Nama Mitra Affiliate</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Nama Mitra</span>
                     <div className="font-bold text-slate-900 mt-0.5">{commissionSnap.affiliateName || 'Mitra Terdaftar'}</div>
                   </div>
-
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Total Komisi Transaksi</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Total Komisi</span>
                     <div className="font-mono font-black text-base text-[#FE8A00] mt-0.5">
                       Rp {commissionSnap.totalCommission.toLocaleString('id-ID')}
                     </div>
                   </div>
-
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase">Status Hak Komisi</span>
                     <div className="mt-0.5 flex items-center gap-2">
@@ -341,77 +422,19 @@ export default function AdminOrderDetailPage({
                         {commissionSnap.status === 'PAID' ? 'LUNAS / DICAIRKAN' :
                          commissionSnap.status === 'APPROVED' ? 'DISETUJUI' :
                          commissionSnap.status === 'CANCELLED' ? 'DIBATALKAN' :
-                         'PENDING (Menunggu)'}
+                         'PENDING'}
                       </span>
-
-                      {/* Quick action for commission */}
-                      {onUpdateCommissionStatus && commissionSnap.status !== 'PAID' && commissionSnap.status !== 'CANCELLED' && (
-                        <button
-                          type="button"
-                          onClick={() => onUpdateCommissionStatus(order.id, 'PAID')}
-                          className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold"
-                          title="Tandai komisi sudah ditransfer ke mitra"
-                        >
-                          Cairkan
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>
-
-                {/* Per-item commission calculation list */}
-                <div className="space-y-2">
-                  <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                    Rincian Perhitungan Komisi per Item:
-                  </div>
-
-                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-                    {commissionSnap.itemsCommission.map((itemCom, idx) => (
-                      <div key={idx} className="p-3 text-xs flex flex-wrap items-center justify-between gap-2 hover:bg-slate-50">
-                        <div>
-                          <div className="font-bold text-slate-900">{itemCom.productName}</div>
-                          <div className="text-[11px] text-slate-500">
-                            {itemCom.quantity} unit • Subtotal: Rp {itemCom.subtotal.toLocaleString('id-ID')}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            itemCom.appliedType === 'campaign' ? 'bg-orange-100 text-[#FE8A00]' :
-                            itemCom.appliedType === 'product_custom' ? 'bg-blue-100 text-blue-800' :
-                            'bg-slate-100 text-slate-700'
-                          }`}>
-                            {itemCom.appliedType === 'campaign' ? `Campaign Promosi (${itemCom.ratePercent}%)` :
-                             itemCom.appliedType === 'product_custom' ? `Komisi Khusus Produk (${itemCom.ratePercent}%)` :
-                             `Komisi Standar Toko (${itemCom.ratePercent}%)`}
-                          </span>
-
-                          <div className="text-right">
-                            <span className="font-mono font-black text-slate-900 text-xs">
-                              Rp {itemCom.commissionAmount.toLocaleString('id-ID')}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : order.referralCode ? (
-              <div className="bg-amber-50 rounded-2xl border border-amber-200 p-4 text-xs text-amber-900 flex items-center justify-between">
-                <div>
-                  <span className="font-bold">Kode Referral Terdeteksi: </span>
-                  <span className="font-mono font-bold text-[#FE8A00]">{order.referralCode}</span>
-                  <p className="text-[11px] text-amber-800 mt-0.5">
-                    Pesanan ini mencatat kode referral namun belum memiliki kalkulasi snapshot komisi.
-                  </p>
-                </div>
               </div>
             ) : null}
+
           </div>
 
           {/* Sidebar / Customer & Delivery Info (Right col) */}
           <div className="space-y-6">
+            
             {/* Customer Details Card */}
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4 text-xs">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -425,7 +448,7 @@ export default function AdminOrderDetailPage({
                     onClick={() => onViewCustomer(order.customerPhone || order.customerName)}
                     className="text-[11px] font-bold text-[#FE8A00] hover:underline flex items-center gap-1"
                   >
-                    <span>Profil Pelanggan</span>
+                    <span>Profil</span>
                     <ExternalLink className="w-3 h-3" />
                   </button>
                 )}
@@ -466,25 +489,34 @@ export default function AdminOrderDetailPage({
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-4 text-xs">
               <div className="flex items-center gap-1.5 border-b border-slate-100 pb-3">
                 <MapPin className="w-4 h-4 text-slate-500" />
-                <h3 className="font-bold text-slate-900">Alamat & Pengiriman</h3>
+                <h3 className="font-bold text-slate-900">Alamat Tujuan Pengiriman</h3>
               </div>
 
               <div className="space-y-2.5">
                 <div>
-                  <div className="text-[11px] text-slate-400 font-bold uppercase">Wilayah / Kecamatan</div>
-                  <div className="font-bold text-slate-900 mt-0.5">{order.customerDistrict}</div>
+                  <div className="text-[11px] text-slate-400 font-bold uppercase">Provinsi & Kota/Kabupaten</div>
+                  <div className="font-bold text-slate-900 mt-0.5">
+                    {order.customerProvince || 'Jawa Timur'} • {order.customerCity || '-'}
+                  </div>
                 </div>
 
                 <div>
-                  <div className="text-[11px] text-slate-400 font-bold uppercase">Alamat Lengkap Tujuan</div>
-                  <div className="text-slate-800 mt-0.5 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                  <div className="text-[11px] text-slate-400 font-bold uppercase">Kecamatan & Kode Pos</div>
+                  <div className="font-semibold text-slate-800 mt-0.5">
+                    {order.customerDistrict} {order.customerPostalCode ? `(${order.customerPostalCode})` : ''}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-[11px] text-slate-400 font-bold uppercase">Alamat Lengkap Jalan</div>
+                  <div className="text-slate-800 mt-0.5 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-100 font-medium">
                     {order.deliveryAddress}
                   </div>
                 </div>
 
                 {order.deliveryNotes ? (
                   <div>
-                    <div className="text-[11px] text-slate-400 font-bold uppercase">Catatan Kurir / Toko</div>
+                    <div className="text-[11px] text-slate-400 font-bold uppercase">Catatan Kurir</div>
                     <div className="text-amber-800 italic mt-0.5 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
                       "{order.deliveryNotes}"
                     </div>
@@ -494,8 +526,8 @@ export default function AdminOrderDetailPage({
                 <div>
                   <div className="text-[11px] text-slate-400 font-bold uppercase">Metode Pengiriman</div>
                   <div className="font-semibold text-slate-800 mt-0.5 flex items-center gap-1.5">
-                    <Truck className="w-3.5 h-3.5 text-slate-500" />
-                    <span>{order.shippingMethod} (Rp {order.shippingCost.toLocaleString('id-ID')})</span>
+                    <Plane className="w-3.5 h-3.5 text-[#FE8A00]" />
+                    <span>{formatShippingMethod(order.shippingMethod)} (Rp {order.shippingCost.toLocaleString('id-ID')})</span>
                   </div>
                 </div>
               </div>
@@ -510,8 +542,8 @@ export default function AdminOrderDetailPage({
 
               <div className="space-y-2 text-slate-600">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Metode Pembayaran:</span>
-                  <span className="font-bold text-slate-800">{order.paymentMethod || 'Midtrans / Online Payment'}</span>
+                  <span className="text-slate-400">Gateway:</span>
+                  <span className="font-bold text-slate-800">{order.paymentGateway || 'Official Payment Link'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Tanggal Dibuat:</span>
@@ -523,6 +555,7 @@ export default function AdminOrderDetailPage({
                 </div>
               </div>
             </div>
+
           </div>
         </div>
       </main>

@@ -10,15 +10,17 @@ import {
   getCampaignPerformance, detectCampaignConflicts, isCampaignActiveAt, 
   getEffectiveProductCommission, syncOrderAffiliateStatus 
 } from '../lib/commissionCalculator';
+import { getPayoutRequests, updatePayoutRequestStatus, AffiliatePayoutRequest } from '../lib/affiliateAttribution';
 import AdminOrderDetailPage from './admin/AdminOrderDetailPage';
 import AdminCampaignFormPage from './admin/AdminCampaignFormPage';
 import AdminCustomerDetailPage from './admin/AdminCustomerDetailPage';
 import AdminAffiliateDetailPage from './admin/AdminAffiliateDetailPage';
+import AdminCategoryFormPage from './admin/AdminCategoryFormPage';
 import { 
   Package, ShoppingBag, TrendingUp, AlertTriangle, Plus, Trash2, 
   Edit3, Check, X, Store, Settings, Truck, DollarSign, Filter, Search,
   Layers, ArrowUp, ArrowDown, Image as ImageIcon, Sparkles, CheckCircle2,
-  AlertCircle, Upload, Star, Loader2, Users, CreditCard, BarChart3,
+  AlertCircle, Upload, Star, Loader2, Users, CreditCard, BarChart3, FolderTree,
   ChevronRight, ArrowLeft, Download, RefreshCw, Eye, ExternalLink,
   ChevronDown, CheckSquare, Square, MoreHorizontal, ArrowUpDown, ShieldCheck,
   Calendar, Phone, Mail, MapPin, Percent, HelpCircle, LogOut, Flame,
@@ -131,6 +133,7 @@ export default function AdminDashboard({
   const [pStock, setPStock] = useState(0);
   const [pUnit, setPUnit] = useState('kg');
   const [pCategory, setPCategory] = useState(categories[0]?.id || '');
+  const [pSubcategory, setPSubcategory] = useState('');
   const [pDescription, setPDescription] = useState('');
   const [pImages, setPImages] = useState<string[]>([]);
   const [newImageUrl, setNewImageUrl] = useState('');
@@ -161,6 +164,7 @@ export default function AdminDashboard({
       setPStock(product.stock);
       setPUnit(product.unit);
       setPCategory(product.categoryId);
+      setPSubcategory(product.subcategoryId || '');
       setPDescription(product.description || '');
       setPImages(product.images && product.images.length > 0 ? product.images : ['https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&auto=format&fit=crop&q=80']);
       setPIsActive(product.isActive);
@@ -183,7 +187,9 @@ export default function AdminDashboard({
       setPOriginalPrice(undefined);
       setPStock(20);
       setPUnit('pcs');
-      setPCategory(categories[0]?.id || '');
+      const rootCat = categories.find(c => !c.parentId);
+      setPCategory(rootCat ? rootCat.id : (categories[0]?.id || ''));
+      setPSubcategory('');
       setPDescription('');
       setPImages(['https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=800&auto=format&fit=crop&q=80']);
       setPIsActive(true);
@@ -201,32 +207,16 @@ export default function AdminDashboard({
   // CATEGORIES MANAGEMENT STATE
   // --------------------------------------------------------------------------
   const [categorySearch, setCategorySearch] = useState('');
-  const [cName, setCName] = useState('');
-  const [cSlug, setCSlug] = useState('');
-  const [cDescription, setCDescription] = useState('');
-  const [cImage, setCImage] = useState('');
-  const [cOrderIndex, setCOrderIndex] = useState(1);
-  const [cIsActive, setCIsActive] = useState(true);
+  const [categoryStatusFilter, setCategoryStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [categoryTypeFilter, setCategoryTypeFilter] = useState<string>('ALL');
+  const [categoryPage, setCategoryPage] = useState(1);
+  const [createCategoryParentId, setCreateCategoryParentId] = useState<string | null>(null);
+  const [createCategoryIsSubcategory, setCreateCategoryIsSubcategory] = useState(false);
   const [deletingCategory, setDeletingCategory] = useState<Category | null>(null);
+  const [deleteConflictReason, setDeleteConflictReason] = useState<string | null>(null);
   const [reassignTargetCatId, setReassignTargetCatId] = useState<string>('');
 
-  const initCategoryForm = (category?: Category | null) => {
-    if (category) {
-      setCName(category.name);
-      setCSlug(category.slug);
-      setCDescription(category.description || '');
-      setCImage(category.imageUrl || getCategoryPhotoAuto(category.name));
-      setCOrderIndex(category.orderIndex);
-      setCIsActive(category.isActive);
-    } else {
-      setCName('');
-      setCSlug('');
-      setCDescription('');
-      setCImage(getCategoryPhotoAuto('Kategori Baru'));
-      setCOrderIndex(categories.length + 1);
-      setCIsActive(true);
-    }
-  };
+
 
   // --------------------------------------------------------------------------
   // ORDERS & PAYMENTS MANAGEMENT STATE
@@ -305,16 +295,13 @@ export default function AdminDashboard({
       setActiveTab('categories');
       setFormView('category_new');
       setActiveEditingCategoryId(null);
-      initCategoryForm(null);
       return;
     }
     if (path.startsWith('/admin/categories/') && path.endsWith('/edit')) {
       const catId = path.replace('/admin/categories/', '').replace('/edit', '').replace(/\/$/, '');
-      const matched = categories.find(c => c.id === catId);
       setActiveTab('categories');
       setFormView('category_edit');
       setActiveEditingCategoryId(catId);
-      if (matched) initCategoryForm(matched);
       return;
     }
     if (path === '/admin/categories') {
@@ -445,11 +432,8 @@ export default function AdminDashboard({
 
     if (mode === 'category_edit' && targetId) {
       setActiveEditingCategoryId(targetId);
-      const matched = categories.find(c => c.id === targetId);
-      if (matched) initCategoryForm(matched);
     } else if (mode === 'category_new') {
       setActiveEditingCategoryId(null);
-      initCategoryForm(null);
     }
 
     if (mode === 'order_detail' && targetId) {
@@ -690,6 +674,7 @@ export default function AdminDashboard({
             stock: computedStock,
             unit: pUnit.trim(),
             categoryId: pCategory,
+            subcategoryId: pSubcategory ? pSubcategory : undefined,
             description: pDescription.trim(),
             images: finalImages,
             isActive: pIsActive,
@@ -714,6 +699,7 @@ export default function AdminDashboard({
         stock: computedStock,
         unit: pUnit.trim(),
         categoryId: pCategory,
+        subcategoryId: pSubcategory ? pSubcategory : undefined,
         description: pDescription.trim(),
         images: finalImages,
         isActive: pIsActive,
@@ -736,13 +722,21 @@ export default function AdminDashboard({
   // --------------------------------------------------------------------------
   // CATEGORIES ACTION HANDLERS
   // --------------------------------------------------------------------------
-  const handleOpenCreateCategory = () => {
-    initCategoryForm(null);
+  const handleOpenCreateCategory = (parentId: string | null = null, isSubcategory = false) => {
+    setCreateCategoryParentId(parentId);
+    setCreateCategoryIsSubcategory(isSubcategory);
+    setActiveEditingCategoryId(null);
     navigateAdmin('categories', 'category_new');
   };
 
+  const handleOpenCreateSubcategory = (targetParentId?: string) => {
+    handleOpenCreateCategory(targetParentId || null, true);
+  };
+
   const handleOpenEditCategory = (cat: Category) => {
-    initCategoryForm(cat);
+    setActiveEditingCategoryId(cat.id);
+    setCreateCategoryParentId(cat.parentId || null);
+    setCreateCategoryIsSubcategory(Boolean(cat.parentId));
     navigateAdmin('categories', 'category_edit', cat.id);
   };
 
@@ -754,73 +748,39 @@ export default function AdminDashboard({
     showToast('Status kategori berhasil diperbarui');
   };
 
-  const handleAutoGenerateCategoryPhoto = () => {
-    if (!cName.trim()) {
-      alert('Ketik nama kategori terlebih dahulu agar sistem dapat mencocokkan foto yang sesuai.');
-      return;
-    }
-    setCImage(getCategoryPhotoAuto(cName));
-  };
-
-  const handleSaveCategoryForm = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!cName.trim()) return;
-
-    const generatedSlug = cSlug.trim() 
-      ? cSlug.trim().toLowerCase().replace(/\s+/g, '-')
-      : cName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
-
-    const finalImage = cImage.trim() || getCategoryPhotoAuto(cName);
-
-    if (formView === 'category_edit' && activeEditingCategoryId) {
-      const updated = categories.map(c => {
-        if (c.id === activeEditingCategoryId) {
-          return {
-            ...c,
-            name: cName.trim(),
-            slug: generatedSlug,
-            description: cDescription.trim(),
-            imageUrl: finalImage,
-            orderIndex: Number(cOrderIndex),
-            isActive: cIsActive,
-            updatedAt: new Date().toISOString()
-          };
-        }
-        return c;
-      });
-      onUpdateCategories(updated);
-      showToast(`Kategori "${cName}" berhasil diperbarui`);
-    } else {
-      const newCat: Category = {
-        id: `cat_${Date.now()}`,
-        name: cName.trim(),
-        slug: generatedSlug,
-        description: cDescription.trim(),
-        imageUrl: finalImage,
-        icon: 'Package',
-        orderIndex: Number(cOrderIndex),
-        isActive: cIsActive,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      onUpdateCategories([...categories, newCat]);
-      showToast(`Kategori "${cName}" berhasil dibuat`);
-    }
-
+  const handleSaveCategoryForm = (categoryData: Category) => {
+    const exists = categories.some(c => c.id === categoryData.id);
+    const updated = exists 
+      ? categories.map(c => c.id === categoryData.id ? categoryData : c)
+      : [...categories, categoryData];
+    onUpdateCategories(updated);
+    showToast(exists ? `Kategori "${categoryData.name}" berhasil diperbarui` : `Kategori "${categoryData.name}" berhasil dibuat`);
     navigateAdmin('categories', 'list');
   };
 
   const handleRequestDeleteCategory = (cat: Category) => {
-    const assignedProducts = products.filter(p => p.categoryId === cat.id);
+    // 1. Relational check: Does this category have child subcategories?
+    const childSubcategories = categories.filter(c => c.parentId === cat.id);
+    if (childSubcategories.length > 0) {
+      setDeletingCategory(cat);
+      setDeleteConflictReason(`Kategori "${cat.name}" memiliki ${childSubcategories.length} subkategori aktif (${childSubcategories.map(s => s.name).join(', ')}). Sesuai aturan integritas data relasional, Anda harus memindahkan atau menghapus subkategori terlebih dahulu sebelum menghapus kategori utama ini.`);
+      return;
+    }
+
+    // 2. Relational check: Does this category or subcategory have assigned products?
+    const assignedProducts = products.filter(p => p.categoryId === cat.id || p.subcategoryId === cat.id);
     if (assignedProducts.length > 0) {
       setDeletingCategory(cat);
-      const otherCat = categories.find(c => c.id !== cat.id);
-      setReassignTargetCatId(otherCat ? otherCat.id : '');
-    } else {
-      if (confirm(`Yakin ingin menghapus kategori "${cat.name}"?`)) {
-        onUpdateCategories(categories.filter(c => c.id !== cat.id));
-        showToast(`Kategori "${cat.name}" telah dihapus`, 'info');
-      }
+      setDeleteConflictReason(null);
+      const otherCats = categories.filter(c => c.id !== cat.id && !c.parentId);
+      setReassignTargetCatId(otherCats[0]?.id || '');
+      return;
+    }
+
+    // 3. Clean deletion with confirmation
+    if (confirm(`Yakin ingin menghapus ${cat.parentId ? 'subkategori' : 'kategori'} "${cat.name}"? Tindakan ini tidak dapat dibatalkan.`)) {
+      onUpdateCategories(categories.filter(c => c.id !== cat.id));
+      showToast(`${cat.parentId ? 'Subkategori' : 'Kategori'} "${cat.name}" telah dihapus`, 'info');
     }
   };
 
@@ -832,10 +792,16 @@ export default function AdminDashboard({
     }
 
     const updatedProducts = products.map(p => {
+      let updated = { ...p };
       if (p.categoryId === deletingCategory.id) {
-        return { ...p, categoryId: reassignTargetCatId, updatedAt: new Date().toISOString() };
+        updated.categoryId = reassignTargetCatId;
+        updated.updatedAt = new Date().toISOString();
       }
-      return p;
+      if (p.subcategoryId === deletingCategory.id) {
+        updated.subcategoryId = undefined;
+        updated.updatedAt = new Date().toISOString();
+      }
+      return updated;
     });
     onUpdateProducts(updatedProducts);
 
@@ -844,6 +810,7 @@ export default function AdminDashboard({
 
     showToast(`Produk dialihkan dan kategori "${deletingCategory.name}" berhasil dihapus.`);
     setDeletingCategory(null);
+    setDeleteConflictReason(null);
   };
 
   // --------------------------------------------------------------------------
@@ -912,10 +879,34 @@ export default function AdminDashboard({
     showToast(`${selectedOrderIds.length} pesanan diubah ke status ${status}`);
   };
 
+  const handleUpdateTrackingInfo = (orderId: string, trackingNumber: string, shippingCarrier?: string, trackingUrl?: string) => {
+    const updated = orders.map(o => {
+      if (o.id === orderId) {
+        return {
+          ...o,
+          trackingNumber: trackingNumber || undefined,
+          shippingCarrier: shippingCarrier || undefined,
+          trackingUrl: trackingUrl || undefined,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return o;
+    });
+    onUpdateOrders(updated);
+    showToast('Informasi pelacakan kargo udara berhasil disimpan');
+  };
+
   // --------------------------------------------------------------------------
   // AFFILIATE & CAMPAIGN MANAGEMENT STATE & ACTIONS
   // --------------------------------------------------------------------------
-  const [affiliateSubTab, setAffiliateSubTab] = useState<'campaigns' | 'applications' | 'transactions' | 'settings'>('campaigns');
+  const [affiliateSubTab, setAffiliateSubTab] = useState<'campaigns' | 'applications' | 'transactions' | 'payouts' | 'settings'>('campaigns');
+  const [adminPayouts, setAdminPayouts] = useState<AffiliatePayoutRequest[]>(getPayoutRequests);
+
+  const handleUpdatePayoutStatus = (reqId: string, status: 'PROCESSED' | 'REJECTED') => {
+    const updated = updatePayoutRequestStatus(reqId, status);
+    setAdminPayouts(updated);
+    showToast(`Status pencairan berhasil diperbarui: ${status === 'PROCESSED' ? 'Ditransfer (Selesai)' : 'Ditolak'}`);
+  };
 
   const handleOpenCreateCampaign = () => {
     navigateAdmin('affiliates', 'campaign_new');
@@ -1031,6 +1022,55 @@ export default function AdminDashboard({
 
   const totalProductPages = Math.ceil(filteredProducts.length / itemsPerPage) || 1;
 
+  const categoriesPerPage = 10;
+  const filteredCategories = useMemo(() => {
+    return categories.filter(c => {
+      const matchStatus = categoryStatusFilter === 'ALL' ||
+        (categoryStatusFilter === 'ACTIVE' && c.isActive) ||
+        (categoryStatusFilter === 'INACTIVE' && !c.isActive);
+
+      let matchType = true;
+      if (categoryTypeFilter === 'MAIN_ONLY') {
+        matchType = !c.parentId;
+      } else if (categoryTypeFilter === 'SUB_ONLY') {
+        matchType = Boolean(c.parentId);
+      } else if (categoryTypeFilter !== 'ALL') {
+        matchType = c.parentId === categoryTypeFilter || c.id === categoryTypeFilter;
+      }
+
+      const q = categorySearch.toLowerCase().trim();
+      const parentName = c.parentId ? (categories.find(p => p.id === c.parentId)?.name || '') : '';
+      const matchSearch = !q ||
+        c.name.toLowerCase().includes(q) ||
+        c.slug.toLowerCase().includes(q) ||
+        (c.description && c.description.toLowerCase().includes(q)) ||
+        parentName.toLowerCase().includes(q);
+
+      return matchStatus && matchType && matchSearch;
+    }).sort((a, b) => {
+      const aParent = a.parentId ? categories.find(p => p.id === a.parentId) : a;
+      const bParent = b.parentId ? categories.find(p => p.id === b.parentId) : b;
+      const aRootOrder = aParent ? aParent.orderIndex : a.orderIndex;
+      const bRootOrder = bParent ? bParent.orderIndex : b.orderIndex;
+
+      if (aRootOrder !== bRootOrder) {
+        return aRootOrder - bRootOrder;
+      }
+      if ((a.parentId || a.id) === (b.parentId || b.id)) {
+        if (!a.parentId && b.parentId) return -1;
+        if (a.parentId && !b.parentId) return 1;
+        return a.orderIndex - b.orderIndex;
+      }
+      return a.orderIndex - b.orderIndex;
+    });
+  }, [categories, categoryStatusFilter, categoryTypeFilter, categorySearch]);
+
+  const totalCategoryPages = Math.max(1, Math.ceil(filteredCategories.length / categoriesPerPage));
+  const paginatedCategories = useMemo(() => {
+    const start = (categoryPage - 1) * categoriesPerPage;
+    return filteredCategories.slice(start, start + categoriesPerPage);
+  }, [filteredCategories, categoryPage]);
+
   const filteredOrders = useMemo(() => {
     return orders.filter(o => {
       const matchSearch = o.orderNumber.toLowerCase().includes(orderSearch.toLowerCase()) ||
@@ -1139,18 +1179,17 @@ export default function AdminDashboard({
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-slate-700 block mb-1">Kategori Produk <span className="text-rose-500">*</span></label>
-                    {categories.length === 0 ? (
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Kategori Utama <span className="text-rose-500">*</span>
+                    </label>
+                    {categories.filter(c => !c.parentId).length === 0 ? (
                       <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 p-2 rounded-lg flex items-center justify-between gap-2">
-                        <span>Belum ada kategori.</span>
+                        <span>Belum ada kategori utama.</span>
                         <button
                           type="button"
-                          onClick={() => {
-                            initCategoryForm(null);
-                            navigateAdmin('categories', 'category_new');
-                          }}
+                          onClick={() => handleOpenCreateCategory(null, false)}
                           className="px-2 py-1 bg-[#FE8A00] hover:bg-[#e07b00] text-white rounded font-bold text-[10px] shrink-0"
                         >
                           + Buat Kategori
@@ -1159,11 +1198,44 @@ export default function AdminDashboard({
                     ) : (
                       <select
                         value={pCategory}
-                        onChange={(e) => setPCategory(e.target.value)}
+                        onChange={(e) => {
+                          setPCategory(e.target.value);
+                          setPSubcategory('');
+                        }}
+                        className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
+                        required
+                      >
+                        {categories.filter(c => !c.parentId).map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1">
+                      Subkategori <span className="text-slate-400 font-normal">(Opsional)</span>
+                    </label>
+                    {categories.filter(c => c.parentId === pCategory && c.isActive).length === 0 ? (
+                      <div className="flex items-center justify-between h-9 px-3 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-400">
+                        <span>Tanpa subkategori</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCreateCategory(pCategory, true)}
+                          className="text-[#FE8A00] font-bold hover:underline text-[11px]"
+                        >
+                          + Tambah
+                        </button>
+                      </div>
+                    ) : (
+                      <select
+                        value={pSubcategory}
+                        onChange={(e) => setPSubcategory(e.target.value)}
                         className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
                       >
-                        {categories.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
+                        <option value="">-- Tanpa Subkategori --</option>
+                        {categories.filter(c => c.parentId === pCategory && c.isActive).map(sub => (
+                          <option key={sub.id} value={sub.id}>↳ {sub.name}</option>
                         ))}
                       </select>
                     )}
@@ -1621,151 +1693,21 @@ export default function AdminDashboard({
   // RENDER: SUB-PAGE FORM FOR CATEGORIES (/admin/categories/new & :id/edit)
   // ==========================================================================
   if (formView === 'category_new' || formView === 'category_edit') {
+    const editingCategory = formView === 'category_edit' && activeEditingCategoryId
+      ? categories.find(c => c.id === activeEditingCategoryId) || null
+      : null;
+
     return (
-      <div className="min-h-screen bg-slate-100/70 text-slate-900 font-sans pb-16">
-        <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigateAdmin('categories', 'list')}
-              className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-slate-500">Kategori Katalog</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                <h1 className="text-sm sm:text-base font-bold text-slate-900">
-                  {formView === 'category_edit' ? 'Edit Kategori Visual' : 'Tambah Kategori Baru'}
-                </h1>
-              </div>
-              <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                {formView === 'category_edit' ? `ID: ${activeEditingCategoryId} • slug: ${cSlug}` : 'Kelola kartu visual dan foto kategori belanja'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => navigateAdmin('categories', 'list')}
-              className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200"
-            >
-              Batal
-            </button>
-            <button
-              type="submit"
-              form="category-form"
-              className="px-4 py-1.5 bg-[#FE8A00] hover:bg-[#e07b00] text-white text-xs font-bold rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
-            >
-              <Check className="w-4 h-4" />
-              <span>Simpan Kategori</span>
-            </button>
-          </div>
-        </header>
-
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
-          <form id="category-form" onSubmit={handleSaveCategoryForm} className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs space-y-4">
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">Nama Kategori <span className="text-rose-500">*</span></label>
-              <input
-                type="text"
-                required
-                value={cName}
-                onChange={(e) => setCName(e.target.value)}
-                placeholder="Contoh: Elektronik & Gadget"
-                className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">Slug URL</label>
-                <input
-                  type="text"
-                  value={cSlug}
-                  onChange={(e) => setCSlug(e.target.value)}
-                  placeholder="otomatis dari nama jika kosong"
-                  className="w-full px-3 py-2 text-xs sm:text-sm font-mono border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">Urutan Tampilan</label>
-                <input
-                  type="number"
-                  value={cOrderIndex}
-                  onChange={(e) => setCOrderIndex(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-semibold text-slate-700 block">URL Foto Sampul Kategori <span className="text-rose-500">*</span></label>
-                <button
-                  type="button"
-                  onClick={handleAutoGenerateCategoryPhoto}
-                  className="text-[11px] font-bold text-[#FE8A00] hover:underline flex items-center gap-1"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Cocokkan Otomatis</span>
-                </button>
-              </div>
-              <input
-                type="url"
-                required
-                value={cImage}
-                onChange={(e) => setCImage(e.target.value)}
-                placeholder="https://..."
-                className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
-              />
-
-              {cImage && (
-                <div className="mt-3 relative aspect-16/9 rounded-lg overflow-hidden border border-slate-200 max-h-48 bg-slate-100">
-                  <img
-                    src={cImage}
-                    alt="Pratinjau Kategori"
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      const target = e.currentTarget;
-                      target.onerror = null;
-                      target.src = 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=80';
-                    }}
-                  />
-                  <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/60 text-white text-[10px]">
-                    Pratinjau Kartu Visual
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-700 block mb-1">Deskripsi Kategori</label>
-              <textarea
-                rows={3}
-                value={cDescription}
-                onChange={(e) => setCDescription(e.target.value)}
-                placeholder="Rangkuman ragam produk lokal dalam kategori ini..."
-                className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
-              />
-            </div>
-
-            <div className="pt-2">
-              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-800">
-                <input
-                  type="checkbox"
-                  checked={cIsActive}
-                  onChange={(e) => setCIsActive(e.target.checked)}
-                  className="w-4 h-4 text-[#FE8A00] rounded focus:ring-[#FE8A00]"
-                />
-                <span>Kategori Aktif & Ditampilkan di Halaman Depan</span>
-              </label>
-            </div>
-          </form>
-        </div>
-      </div>
+      <AdminCategoryFormPage
+        categoryToEdit={editingCategory}
+        initialParentId={createCategoryParentId}
+        initialIsSubcategory={createCategoryIsSubcategory}
+        allCategories={categories}
+        products={products}
+        onSave={handleSaveCategoryForm}
+        onCancel={() => navigateAdmin('categories', 'list')}
+        onShowToast={showToast}
+      />
     );
   }
 
@@ -1783,6 +1725,7 @@ export default function AdminDashboard({
           onUpdateOrderStatus={handleUpdateOrderStatus}
           onUpdatePaymentStatus={handleUpdatePaymentStatus}
           onUpdateCommissionStatus={handleUpdateCommissionPaymentStatus}
+          onUpdateTrackingInfo={handleUpdateTrackingInfo}
           onViewCustomer={(custKey) => navigateAdmin('customers', 'customer_detail', custKey)}
         />
       );
@@ -1920,9 +1863,12 @@ export default function AdminDashboard({
               <span className="text-[10px] font-bold px-1.5 py-0.2 bg-orange-100 text-[#FE8A00] rounded">
                 Seller Centre
               </span>
+              <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                {(import.meta as any).env?.DEV || (import.meta as any).env?.MODE !== 'production' ? 'Dev/Preview Mode' : 'Production'}
+              </span>
             </div>
             <p className="text-[10px] text-slate-400 font-medium hidden sm:block">
-              Sistem Manajemen Operasional & Katalog Tumpang Shop
+              Sistem Manajemen Operasional & Katalog Tumpang Shop (Kargo Udara Impor)
             </p>
           </div>
         </div>
@@ -2492,8 +2438,14 @@ export default function AdminDashboard({
                                   </div>
                                 </div>
                               </td>
-                              <td className="py-3 px-3 text-slate-600 font-medium">
-                                {categoryMap.get(prod.categoryId) || 'Umum'}
+                              <td className="py-3 px-3 text-slate-700 font-medium">
+                                <div className="font-semibold text-slate-900">{categoryMap.get(prod.categoryId) || 'Umum'}</div>
+                                {prod.subcategoryId && categoryMap.get(prod.subcategoryId) && (
+                                  <div className="text-[10px] text-orange-600 font-medium flex items-center gap-1 mt-0.5">
+                                    <span>↳</span>
+                                    <span>{categoryMap.get(prod.subcategoryId)}</span>
+                                  </div>
+                                )}
                               </td>
                               <td className="py-3 px-3 font-bold text-slate-900">
                                 Rp {prod.price.toLocaleString('id-ID')}
@@ -2602,129 +2554,384 @@ export default function AdminDashboard({
           {/* ================================================================ */}
           {activeTab === 'categories' && (
             <div className="space-y-4 max-w-7xl mx-auto">
+              
+              {/* Header Halaman + Aksi Utama Kategori & Subkategori */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <div>
-                  <h1 className="text-lg font-bold text-slate-900">Kategori Produk</h1>
-                  <p className="text-xs text-slate-500">Atur kartu visual etalase, foto sampul, dan hierarki kategori toko</p>
+                  <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-[#FE8A00]" />
+                    <span>Kategori & Subkategori Produk</span>
+                  </h1>
+                  <p className="text-xs text-slate-500">
+                    Kelola struktur etalase, foto visual kartu, dan hubungan hierarki kategori &amp; subkategori
+                  </p>
                 </div>
-                <button
-                  onClick={handleOpenCreateCategory}
-                  className="px-4 py-2 bg-[#FE8A00] hover:bg-[#e07b00] text-white text-xs font-bold rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Tambah Kategori</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleOpenCreateCategory(null, false)}
+                    className="px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors shadow-2xs flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-[#FE8A00]" />
+                    <span>+ Kategori Utama</span>
+                  </button>
+                  <button
+                    onClick={() => handleOpenCreateSubcategory()}
+                    className="px-4 py-2 bg-[#FE8A00] hover:bg-[#e07b00] text-white text-xs font-bold rounded-lg transition-colors shadow-xs flex items-center gap-1.5"
+                  >
+                    <FolderTree className="w-3.5 h-3.5" />
+                    <span>+ Subkategori</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Category Safe Deletion Conflict Modal */}
-              {deletingCategory && (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-3 text-xs">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="font-bold text-amber-900">Konflik Penghapusan Kategori: "{deletingCategory.name}"</h4>
-                      <p className="text-amber-800 text-[11px] mt-0.5">
-                        Kategori ini memiliki {products.filter(p => p.categoryId === deletingCategory.id).length} produk aktif. Silakan pilih kategori tujuan untuk memindahkan produk sebelum dihapus:
-                      </p>
-                    </div>
+              {/* Filter & Toolbar Bar */}
+              <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs space-y-3">
+                <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+                  
+                  {/* Search Input */}
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={categorySearch}
+                      onChange={(e) => {
+                        setCategorySearch(e.target.value);
+                        setCategoryPage(1);
+                      }}
+                      placeholder="Cari nama kategori, subkategori, atau slug..."
+                      className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 focus:bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
+                    />
+                    {categorySearch && (
+                      <button
+                        onClick={() => {
+                          setCategorySearch('');
+                          setCategoryPage(1);
+                        }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
+
+                  {/* Filter Dropdowns */}
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    
+                    {/* Status Filter */}
                     <select
-                      value={reassignTargetCatId}
-                      onChange={(e) => setReassignTargetCatId(e.target.value)}
-                      className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                      value={categoryStatusFilter}
+                      onChange={(e) => {
+                        setCategoryStatusFilter(e.target.value as any);
+                        setCategoryPage(1);
+                      }}
+                      className="px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700"
                     >
-                      {categories.filter(c => c.id !== deletingCategory.id).map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
+                      <option value="ALL">Semua Status</option>
+                      <option value="ACTIVE">Status: Aktif</option>
+                      <option value="INACTIVE">Status: Nonaktif</option>
                     </select>
-                    <button
-                      onClick={handleConfirmReassignAndDeleteCategory}
-                      className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg font-bold"
+
+                    {/* Hierarchy / Parent Filter */}
+                    <select
+                      value={categoryTypeFilter}
+                      onChange={(e) => {
+                        setCategoryTypeFilter(e.target.value);
+                        setCategoryPage(1);
+                      }}
+                      className="px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700"
                     >
-                      Pindahkan & Hapus
-                    </button>
-                    <button
-                      onClick={() => setDeletingCategory(null)}
-                      className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-white"
-                    >
-                      Batal
-                    </button>
+                      <option value="ALL">Semua Tingkat Hierarki</option>
+                      <option value="MAIN_ONLY">Kategori Utama Saja</option>
+                      <option value="SUB_ONLY">Semua Subkategori Saja</option>
+                      <optgroup label="Berdasarkan Kategori Induk:">
+                        {categories.filter(c => !c.parentId).map(root => (
+                          <option key={root.id} value={root.id}>
+                            📁 {root.name} &amp; Subnya
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
+
+                    <span className="text-[11px] text-slate-400 px-1">
+                      {filteredCategories.length} data
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Category Safe Deletion Conflict Notification */}
+              {deletingCategory && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-3 text-xs animate-in fade-in duration-200">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <h4 className="font-bold text-amber-900 text-xs">
+                        Peringatan Integritas Data: "{deletingCategory.name}"
+                      </h4>
+                      {deleteConflictReason ? (
+                        <div className="space-y-2 text-amber-800 text-xs">
+                          <p>{deleteConflictReason}</p>
+                          <div className="flex items-center gap-2 pt-1">
+                            <button
+                              onClick={() => {
+                                setCategoryTypeFilter(deletingCategory.id);
+                                setCategoryPage(1);
+                                setDeletingCategory(null);
+                                setDeleteConflictReason(null);
+                              }}
+                              className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg font-bold"
+                            >
+                              Tampilkan Subkategori di Tabel
+                            </button>
+                            <button
+                              onClick={() => {
+                                setDeletingCategory(null);
+                                setDeleteConflictReason(null);
+                              }}
+                              className="px-3 py-1.5 border border-amber-300 text-amber-900 bg-white rounded-lg hover:bg-amber-100"
+                            >
+                              Tutup
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 text-amber-800 text-xs">
+                          <p>
+                            Kategori ini memiliki <strong>{products.filter(p => p.categoryId === deletingCategory.id || p.subcategoryId === deletingCategory.id).length} produk aktif</strong>. 
+                            Untuk mencegah produk menjadi tanpa kategori, pilih kategori pengganti di bawah ini sebelum menghapus:
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <select
+                              value={reassignTargetCatId}
+                              onChange={(e) => setReassignTargetCatId(e.target.value)}
+                              className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                            >
+                              {categories
+                                .filter(c => c.id !== deletingCategory.id && !c.parentId)
+                                .map(c => (
+                                  <option key={c.id} value={c.id}>
+                                    Pindahkan ke: {c.name}
+                                  </option>
+                                ))}
+                            </select>
+                            <button
+                              onClick={handleConfirmReassignAndDeleteCategory}
+                              className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg font-bold"
+                            >
+                              Pindahkan Produk &amp; Hapus Kategori
+                            </button>
+                            <button
+                              onClick={() => {
+                                setDeletingCategory(null);
+                                setDeleteConflictReason(null);
+                              }}
+                              className="px-3 py-1.5 border border-slate-300 text-slate-700 bg-white rounded-lg hover:bg-slate-50"
+                            >
+                              Batal
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
 
               {/* Categories Table View */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50/80 text-slate-600 uppercase border-b border-slate-200 font-semibold tracking-wider text-[11px]">
-                    <tr>
-                      <th className="py-3 px-3 w-16">Urutan</th>
-                      <th className="py-3 px-3">Foto Sampul</th>
-                      <th className="py-3 px-3">Nama Kategori</th>
-                      <th className="py-3 px-3">Slug URL</th>
-                      <th className="py-3 px-3">Jumlah Produk</th>
-                      <th className="py-3 px-3">Status</th>
-                      <th className="py-3 px-3 text-right">Tindakan</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {[...categories]
-                      .sort((a, b) => a.orderIndex - b.orderIndex)
-                      .map(cat => {
-                        const count = products.filter(p => p.categoryId === cat.id).length;
-                        return (
-                          <tr key={cat.id} className="hover:bg-slate-50/60 transition-colors">
-                            <td className="py-3 px-3 font-bold text-slate-700">#{cat.orderIndex}</td>
-                            <td className="py-3 px-3">
-                              <img
-                                src={cat.imageUrl || getCategoryPhotoAuto(cat.name)}
-                                alt={cat.name}
-                                referrerPolicy="no-referrer"
-                                className="w-12 h-9 rounded-md object-cover border border-slate-200 bg-slate-50"
-                              />
-                            </td>
-                            <td className="py-3 px-3">
-                              <div className="font-bold text-slate-900">{cat.name}</div>
-                              {cat.description && (
-                                <div className="text-[11px] text-slate-400 line-clamp-1">{cat.description}</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50/80 text-slate-600 uppercase border-b border-slate-200 font-semibold tracking-wider text-[11px]">
+                      <tr>
+                        <th className="py-3 px-3 w-16 text-center">Urutan</th>
+                        <th className="py-3 px-3 w-16">Foto</th>
+                        <th className="py-3 px-3">Nama Kategori &amp; Hierarki</th>
+                        <th className="py-3 px-3">Slug URL</th>
+                        <th className="py-3 px-3">Produk</th>
+                        <th className="py-3 px-3">Status</th>
+                        <th className="py-3 px-3 text-right">Tindakan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {paginatedCategories.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-slate-400">
+                            <div className="space-y-2">
+                              <p>Tidak ada kategori atau subkategori yang sesuai filter.</p>
+                              {(categorySearch || categoryStatusFilter !== 'ALL' || categoryTypeFilter !== 'ALL') && (
+                                <button
+                                  onClick={() => {
+                                    setCategorySearch('');
+                                    setCategoryStatusFilter('ALL');
+                                    setCategoryTypeFilter('ALL');
+                                    setCategoryPage(1);
+                                  }}
+                                  className="text-xs font-bold text-[#FE8A00] hover:underline"
+                                >
+                                  Reset Semua Filter
+                                </button>
                               )}
-                            </td>
-                            <td className="py-3 px-3 font-mono text-[11px] text-slate-500">{cat.slug}</td>
-                            <td className="py-3 px-3 font-bold text-slate-700">{count} produk</td>
-                            <td className="py-3 px-3">
-                              <button
-                                onClick={() => handleToggleCategoryActive(cat.id)}
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  cat.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
-                                }`}
-                              >
-                                {cat.isActive ? 'Aktif' : 'Nonaktif'}
-                              </button>
-                            </td>
-                            <td className="py-3 px-3 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        paginatedCategories.map(cat => {
+                          const directProductsCount = products.filter(p => p.categoryId === cat.id || p.subcategoryId === cat.id).length;
+                          const isSub = Boolean(cat.parentId);
+                          const parentCat = isSub ? categories.find(p => p.id === cat.parentId) : null;
+                          const childSubs = !isSub ? categories.filter(c => c.parentId === cat.id) : [];
+
+                          return (
+                            <tr key={cat.id} className={`hover:bg-slate-50/70 transition-colors ${isSub ? 'bg-slate-50/30' : ''}`}>
+                              {/* Order Index */}
+                              <td className="py-3 px-3 text-center font-bold text-slate-700">
+                                #{cat.orderIndex}
+                              </td>
+
+                              {/* Photo Thumbnail */}
+                              <td className="py-3 px-3">
+                                <div className="relative w-12 h-9 rounded-md overflow-hidden border border-slate-200 bg-slate-100 shrink-0">
+                                  <img
+                                    src={cat.imageUrl || getCategoryPhotoAuto(cat.name)}
+                                    alt={cat.name}
+                                    referrerPolicy="no-referrer"
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      const target = e.currentTarget;
+                                      target.onerror = null;
+                                      target.src = 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=80';
+                                    }}
+                                  />
+                                </div>
+                              </td>
+
+                              {/* Name & Hierarchy Structure */}
+                              <td className="py-3 px-3">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {isSub && (
+                                      <span className="text-slate-400 font-bold select-none text-xs">↳</span>
+                                    )}
+                                    <span className="font-bold text-slate-900 text-xs">
+                                      {cat.name}
+                                    </span>
+                                    
+                                    {isSub ? (
+                                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
+                                        <FolderTree className="w-2.5 h-2.5" />
+                                        <span>Subkategori</span>
+                                        {parentCat && <span>• Induk: {parentCat.name}</span>}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-orange-50 text-orange-800 border border-orange-200 flex items-center gap-1">
+                                        <Layers className="w-2.5 h-2.5" />
+                                        <span>Kategori Utama</span>
+                                        {childSubs.length > 0 && (
+                                          <span>({childSubs.length} sub)</span>
+                                        )}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {cat.description && (
+                                    <div className="text-[11px] text-slate-400 line-clamp-1">
+                                      {cat.description}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Slug URL */}
+                              <td className="py-3 px-3 font-mono text-[11px] text-slate-500">
+                                /{cat.slug}
+                              </td>
+
+                              {/* Product Count */}
+                              <td className="py-3 px-3">
+                                <span className="font-bold text-slate-700 text-xs">
+                                  {directProductsCount} produk
+                                </span>
+                              </td>
+
+                              {/* Status Toggle */}
+                              <td className="py-3 px-3">
                                 <button
-                                  onClick={() => handleOpenEditCategory(cat)}
-                                  className="p-1 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                                  title="Edit Kategori"
+                                  onClick={() => handleToggleCategoryActive(cat.id)}
+                                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition-colors ${
+                                    cat.isActive 
+                                      ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' 
+                                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                  }`}
+                                  title="Klik untuk mengubah status aktif"
                                 >
-                                  <Edit3 className="w-4 h-4" />
+                                  {cat.isActive ? '● Aktif' : '○ Nonaktif'}
                                 </button>
-                                <button
-                                  onClick={() => handleRequestDeleteCategory(cat)}
-                                  className="p-1 rounded text-rose-600 hover:text-rose-800 hover:bg-rose-50"
-                                  title="Hapus Kategori"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
+                              </td>
+
+                              {/* Actions */}
+                              <td className="py-3 px-3 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {!isSub && (
+                                    <button
+                                      onClick={() => handleOpenCreateCategory(cat.id, true)}
+                                      className="px-2 py-1 rounded text-[11px] font-semibold text-[#FE8A00] bg-orange-50 hover:bg-orange-100 transition-colors flex items-center gap-1"
+                                      title="Tambah subkategori di bawah kategori ini"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                      <span>Sub</span>
+                                    </button>
+                                  )}
+
+                                  <button
+                                    onClick={() => handleOpenEditCategory(cat)}
+                                    className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                                    title="Edit Kategori / Subkategori"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleRequestDeleteCategory(cat)}
+                                    className="p-1.5 rounded-lg text-rose-600 hover:text-rose-800 hover:bg-rose-50 transition-colors"
+                                    title="Hapus Kategori"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Categories Pagination Controls */}
+                <div className="p-3 bg-slate-50/60 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+                  <div>
+                    Menampilkan {paginatedCategories.length} dari {filteredCategories.length} kategori
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      disabled={categoryPage <= 1}
+                      onClick={() => setCategoryPage(prev => Math.max(1, prev - 1))}
+                      className="px-2.5 py-1 border border-slate-200 rounded hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                    >
+                      Sebelumnya
+                    </button>
+                    <span className="font-semibold text-slate-700 px-2">
+                      Hal {categoryPage} / {totalCategoryPages}
+                    </span>
+                    <button
+                      disabled={categoryPage >= totalCategoryPages}
+                      onClick={() => setCategoryPage(prev => Math.min(totalCategoryPages, prev + 1))}
+                      className="px-2.5 py-1 border border-slate-200 rounded hover:bg-slate-100 disabled:opacity-40 transition-colors"
+                    >
+                      Berikutnya
+                    </button>
+                  </div>
+                </div>
+
               </div>
             </div>
           )}
@@ -2768,12 +2975,13 @@ export default function AdminDashboard({
                       className="px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700"
                     >
                       <option value="ALL">Semua Status Pesanan</option>
-                      <option value="NEW">Baru</option>
-                      <option value="PROCESSING">Diproses</option>
-                      <option value="PACKED">Dikemas</option>
-                      <option value="SHIPPED">Dikirim</option>
-                      <option value="COMPLETED">Selesai (Completed)</option>
-                      <option value="CANCELLED">Dibatalkan</option>
+                      <option value="NEW">1. Menunggu Pembayaran</option>
+                      <option value="PAYMENT_VERIFIED">2. Pembayaran Terverifikasi</option>
+                      <option value="WAITING_SUPPLIER_CONFIRMATION">3. Konfirmasi Pemasok</option>
+                      <option value="SUPPLIER_PROCESSING">4. Diproses Pemasok</option>
+                      <option value="IN_TRANSIT_AIR">5. Kargo Udara</option>
+                      <option value="DELIVERED">6. Terkirim (Selesai)</option>
+                      <option value="CANCELLED">7. Dibatalkan / Refund</option>
                     </select>
 
                     <select
@@ -2786,8 +2994,9 @@ export default function AdminDashboard({
                     >
                       <option value="ALL">Semua Pembayaran</option>
                       <option value="PAID">Lunas (Paid)</option>
-                      <option value="PENDING">Pending</option>
+                      <option value="PENDING">Pending (Menunggu)</option>
                       <option value="WAITING_VERIFICATION">Verifikasi Gateway</option>
+                      <option value="REFUNDED">Refund</option>
                       <option value="EXPIRED">Kedaluwarsa</option>
                     </select>
                   </div>
@@ -2797,24 +3006,30 @@ export default function AdminDashboard({
                 {selectedOrderIds.length > 0 && (
                   <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs bg-orange-50/50 p-2 rounded-lg">
                     <span className="font-semibold text-slate-700">{selectedOrderIds.length} pesanan terpilih</span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <button
-                        onClick={() => handleBulkUpdateOrderStatus('PACKED')}
-                        className="px-2 py-1 bg-white border border-slate-200 rounded font-medium"
+                        onClick={() => handleBulkUpdateOrderStatus('WAITING_SUPPLIER_CONFIRMATION')}
+                        className="px-2 py-1 bg-white border border-slate-200 rounded text-[11px] font-medium"
                       >
-                        Set: Dikemas
+                        Set: Konfirmasi Pemasok
                       </button>
                       <button
-                        onClick={() => handleBulkUpdateOrderStatus('SHIPPED')}
-                        className="px-2 py-1 bg-white border border-slate-200 rounded font-medium"
+                        onClick={() => handleBulkUpdateOrderStatus('SUPPLIER_PROCESSING')}
+                        className="px-2 py-1 bg-white border border-slate-200 rounded text-[11px] font-medium"
                       >
-                        Set: Dikirim
+                        Set: Diproses Pemasok
                       </button>
                       <button
-                        onClick={() => handleBulkUpdateOrderStatus('COMPLETED')}
-                        className="px-2 py-1 bg-emerald-700 text-white rounded font-medium"
+                        onClick={() => handleBulkUpdateOrderStatus('IN_TRANSIT_AIR')}
+                        className="px-2 py-1 bg-white border border-slate-200 rounded text-[11px] font-medium"
                       >
-                        Set: Selesai
+                        Set: Kargo Udara
+                      </button>
+                      <button
+                        onClick={() => handleBulkUpdateOrderStatus('DELIVERED')}
+                        className="px-2 py-1 bg-emerald-700 text-white rounded text-[11px] font-medium"
+                      >
+                        Set: Terkirim
                       </button>
                     </div>
                   </div>
@@ -2894,16 +3109,21 @@ export default function AdminDashboard({
                                 value={o.orderStatus}
                                 onChange={(e) => handleUpdateOrderStatus(o.id, e.target.value as any)}
                                 className={`px-2 py-1 border rounded text-[11px] font-semibold ${
-                                  o.orderStatus === 'COMPLETED' ? 'bg-emerald-50 text-emerald-800 border-emerald-300' :
-                                  o.orderStatus === 'CANCELLED' ? 'bg-slate-100 text-slate-600 border-slate-300' :
+                                  o.orderStatus === 'DELIVERED' || o.orderStatus === 'COMPLETED' ? 'bg-emerald-50 text-emerald-800 border-emerald-300' :
+                                  o.orderStatus === 'CANCELLED' ? 'bg-rose-50 text-rose-700 border-rose-300' :
+                                  o.orderStatus === 'IN_TRANSIT_AIR' || o.orderStatus === 'SHIPPED' ? 'bg-purple-50 text-purple-800 border-purple-300' :
+                                  o.orderStatus === 'SUPPLIER_PROCESSING' ? 'bg-indigo-50 text-indigo-800 border-indigo-300' :
+                                  o.orderStatus === 'WAITING_SUPPLIER_CONFIRMATION' ? 'bg-sky-50 text-sky-800 border-sky-300' :
+                                  o.orderStatus === 'PAYMENT_VERIFIED' ? 'bg-blue-50 text-blue-800 border-blue-300' :
                                   'bg-amber-50 text-amber-900 border-amber-300'
                                 }`}
                               >
-                                <option value="NEW">Baru</option>
-                                <option value="PROCESSING">Diproses</option>
-                                <option value="PACKED">Dikemas</option>
-                                <option value="SHIPPED">Dikirim</option>
-                                <option value="COMPLETED">Selesai (Completed)</option>
+                                <option value="NEW">Menunggu Bayar</option>
+                                <option value="PAYMENT_VERIFIED">Bayar Terverifikasi</option>
+                                <option value="WAITING_SUPPLIER_CONFIRMATION">Konfirmasi Pemasok</option>
+                                <option value="SUPPLIER_PROCESSING">Diproses Pemasok</option>
+                                <option value="IN_TRANSIT_AIR">Kargo Udara</option>
+                                <option value="DELIVERED">Terkirim</option>
                                 <option value="CANCELLED">Dibatalkan</option>
                               </select>
                             </td>
@@ -3199,6 +3419,18 @@ export default function AdminDashboard({
                 >
                   <DollarSign className="w-3.5 h-3.5" />
                   <span>Riwayat Komisi Pesanan ({orders.filter(o => Boolean(o.affiliateCommission)).length})</span>
+                </button>
+
+                <button
+                  onClick={() => setAffiliateSubTab('payouts')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                    affiliateSubTab === 'payouts'
+                      ? 'bg-orange-50 text-[#FE8A00] border border-orange-200'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  <span>Pencairan Komisi ({adminPayouts.length})</span>
                 </button>
 
                 <button
@@ -3587,7 +3819,95 @@ export default function AdminDashboard({
               )}
 
               {/* ------------------------------------------------------------ */}
-              {/* SUB-TAB 4: PENGATURAN KOMISI STANDAR (REQUIREMENT 1)        */}
+              {/* SUB-TAB 4: PENCAIRAN KOMISI DANA MITRA                        */}
+              {/* ------------------------------------------------------------ */}
+              {affiliateSubTab === 'payouts' && (
+                <div className="space-y-4">
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-xs text-slate-600 leading-relaxed">
+                    <p className="font-bold text-slate-900 mb-1">Verifikasi & Penyaluran Pencairan Dana Mitra</p>
+                    <p>
+                      Daftar permohonan penarikan saldo komisi yang diajukan oleh mitra affiliate. Periksa rekening bank/e-wallet mitra dan klik <strong>Setujui & Tandai Ditransfer</strong> setelah transfer selesai.
+                    </p>
+                  </div>
+
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50/80 text-slate-600 uppercase border-b border-slate-200 font-semibold tracking-wider text-[11px]">
+                        <tr>
+                          <th className="py-3 px-3">Tanggal Pengajuan</th>
+                          <th className="py-3 px-3">ID Referral Mitra</th>
+                          <th className="py-3 px-3">Rekening / E-Wallet</th>
+                          <th className="py-3 px-3">Jumlah Penarikan</th>
+                          <th className="py-3 px-3">Status</th>
+                          <th className="py-3 px-3 text-right">Tindakan Admin</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {adminPayouts.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-12 text-center text-slate-400">
+                              Belum ada pengajuan pencairan dana dari mitra affiliate.
+                            </td>
+                          </tr>
+                        ) : (
+                          adminPayouts.map(req => (
+                            <tr key={req.id} className="hover:bg-slate-50/50">
+                              <td className="py-3 px-3 text-slate-500 font-mono">
+                                {new Date(req.createdAt).toLocaleDateString('id-ID', { dateStyle: 'medium' })}
+                              </td>
+                              <td className="py-3 px-3">
+                                <span className="font-mono font-bold text-[#FE8A00] bg-orange-50 px-2 py-0.5 rounded border border-orange-200">
+                                  {req.referralCode}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3">
+                                <div className="font-bold text-slate-900">{req.bankName} - {req.accountNumber}</div>
+                                <div className="text-[11px] text-slate-500">a.n. {req.accountName}</div>
+                              </td>
+                              <td className="py-3 px-3 font-mono font-bold text-sm text-slate-900">
+                                Rp {req.amount.toLocaleString('id-ID')}
+                              </td>
+                              <td className="py-3 px-3">
+                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  req.status === 'PROCESSED' ? 'bg-emerald-100 text-emerald-800' :
+                                  req.status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                                  'bg-amber-100 text-amber-800'
+                                }`}>
+                                  {req.status === 'PROCESSED' ? 'Ditransfer (Selesai)' :
+                                   req.status === 'REJECTED' ? 'Ditolak' : 'Menunggu Admin'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                {req.status === 'PENDING' ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      onClick={() => handleUpdatePayoutStatus(req.id, 'PROCESSED')}
+                                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-semibold transition-colors"
+                                    >
+                                      Setujui & Transfer
+                                    </button>
+                                    <button
+                                      onClick={() => handleUpdatePayoutStatus(req.id, 'REJECTED')}
+                                      className="px-2 py-1 text-rose-600 hover:bg-rose-50 border border-rose-200 rounded text-[11px] font-semibold transition-colors"
+                                    >
+                                      Tolak
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-[11px] text-slate-400 italic">Sudah diproses</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* ------------------------------------------------------------ */}
+              {/* SUB-TAB 5: PENGATURAN KOMISI STANDAR (REQUIREMENT 1)        */}
               {/* ------------------------------------------------------------ */}
               {affiliateSubTab === 'settings' && (
                 <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs space-y-4 max-w-xl">
@@ -3727,15 +4047,43 @@ export default function AdminDashboard({
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="font-semibold text-slate-700 block mb-1">Tarif Antar Standar (Rp)</label>
+                    <label className="font-semibold text-slate-700 block mb-1">
+                      Tarif Pengiriman Reguler via Udara (Rp)
+                    </label>
                     <input
                       type="number"
-                      value={storeConfig.defaultDeliveryFee}
-                      onChange={(e) => onUpdateConfig({ ...storeConfig, defaultDeliveryFee: Number(e.target.value) })}
+                      value={storeConfig.airFreightDeliveryFee ?? storeConfig.defaultDeliveryFee}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        onUpdateConfig({ 
+                          ...storeConfig, 
+                          defaultDeliveryFee: val,
+                          airFreightDeliveryFee: val 
+                        });
+                      }}
                       className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
                     />
+                    <p className="text-[10px] text-slate-400 mt-1">Tarif resmi kargo udara untuk seluruh pesanan</p>
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-slate-700 block mb-1">
+                      Estimasi Hari Kalender (~ Hari)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="60"
+                      value={storeConfig.airFreightEstimatedDays ?? 14}
+                      onChange={(e) => onUpdateConfig({ 
+                        ...storeConfig, 
+                        airFreightEstimatedDays: Number(e.target.value) || 14 
+                      })}
+                      className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">Estimasi operasional kargo udara (default 14 hari)</p>
                   </div>
 
                   <div>
@@ -3746,7 +4094,12 @@ export default function AdminDashboard({
                       onChange={(e) => onUpdateConfig({ ...storeConfig, serviceFee: Number(e.target.value) })}
                       className="w-full px-3 py-2 text-xs sm:text-sm border border-slate-200 rounded-lg focus:outline-hidden focus:border-[#FE8A00]"
                     />
+                    <p className="text-[10px] text-slate-400 mt-1">Biaya sistem/pemeliharaan</p>
                   </div>
+                </div>
+
+                <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
+                  <strong>Catatan Operasional Model Bisnis Impor:</strong> Estimasi 14 hari kalender adalah estimasi sementara yang dapat diubah sesuai data operasional pemasok luar negeri, prosedur bea cukai, atau rute kargo udara. Sistem tidak menjanjikan tanggal pasti kepada pembeli sebelum nomor AWB diterbitkan.
                 </div>
 
                 <div className="pt-2 border-t border-slate-100">

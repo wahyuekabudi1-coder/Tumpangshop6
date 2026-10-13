@@ -1,0 +1,112 @@
+[
+  {
+    "id": "aff_1791877954081_pf4l",
+    "fullName": "Mitra Audit Production",
+    "phone": "081298765432",
+    "email": "aff_audit_1791877954019@example.com",
+    "promotionChannel": "Status WhatsApp & TikTok",
+    "status": "APPROVED",
+    "referralCode": "TS-MITRAAUD13",
+    "passwordHash": "e0ca8b6b13eaba4dbe58ccd6fee775ac65b3483af75ec0cfa4a342204a2c85b9",
+    "createdAt": "2026-10-13T07:52:34.081Z"
+  },
+  {
+    "id": "aff_1791877975604_ghun",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI68",
+    "passwordHash": "b46e7dcdc45244c38abcd68d7cfd8683ae008d4fbbc2effc93e6b00d979e7095",
+    "createdAt": "2026-10-13T07:52:55.604Z"
+  },
+  {
+    "id": "aff_1791887202189_gkvt",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI10",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$2e1fab3fc4b340004a8d2e4eadbf6c5b$b7d3fd37a040a35b3c5a5cf580b02c05dda5bd8cc596d860f8d12c19fc35d71eff5865bb7654f8ab172d8c0878c489327a9d77bd01f7e1a7b969622ec75b9886",
+    "createdAt": "2026-10-13T10:26:42.189Z"
+  },
+  {
+    "id": "aff_1791877996510_zywh",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI42",
+    "passwordHash": "b46e7dcdc45244c38abcd68d7cfd8683ae008d4fbbc2effc93e6b00d979e7095",
+    "createdAt": "2026-10-13T07:53:16.510Z"
+  },
+  {
+    "id": "aff_1791885969123_duch",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI63",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$f9654a9e3ae88f5859914979b4c109bc$2cbe0ca8bf6b5d7ee2ec0b7976ca90a15376f8f5bde3ffc2a3cc8e20ae55ff61dfe6614e88a0ca7baeca71aac5b129e17f55ae6a36544a0575124dc5d1d53122",
+    "createdAt": "2026-10-13T10:06:09.123Z"
+  },
+  {
+    "id": "aff_1791885900877_hxj0",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791885900855@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT81",
+    "passwordHash": "eaacc312c8452653115aa944760bd7a858d98833c4dcab69ea7d3269ac2242b4",
+    "createdAt": "2026-10-13T10:05:00.877Z"
+  },
+  {
+    "id": "aff_1791887193861_0h3x",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791887193757@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT39",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$b8d81cb19395039c2829a79edc6d917d$97a202649ad34b1e8287c816bcedb565f8989d0b5347a3831b17d95096143af46a5266bbb46a949834942fe459fb3a6d3af2862b0a1d65f6b5c4ed7b0296d3d6",
+    "createdAt": "2026-10-13T10:26:33.861Z"
+  },
+  {
+    "id": "aff_1791886965465_z0r3",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791886965341@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT10",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$24fd82879b75575beab2834084b77ff0$0d5aa2c1901051dbcb7c63add2ca19f633d9684cf5bd770099bad9e73a00ab3f82ff1004d6ba92b1045c9e1967afefb5221584541486b8ea03fd923d4aa61372",
+    "createdAt": "2026-10-13T10:22:45.465Z"
+  },
+  {
+    "id": "aff_1791885962402_v2xm",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791885962293@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT20",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$777197c3d73caa0fb8042252bbf40361$df70662dbe0a7e54419b4df128199561267b9a51adb45dbb249daa3e9073915e7bf4b11cb629ac668739a49fdb56f2ea11461e846e3ad0b1fefccba46e178f65",
+    "createdAt": "2026-10-13T10:06:02.402Z"
+  },
+  {
+    "id": "aff_1791885910618_wwha",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791885910458@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT92",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$97c3582450ec360433e9d2f76de88972$470df04daa0a82a4178bbedad7c47c2fb20fff69f8b2a1f5c391da2e1a2a589e278e2b0308bf5c02fd3f783a6ac6251d34b127d38f0fc2218dd4101570cdc73e",
+    "createdAt": "2026-10-13T10:05:10.618Z"
+  }
+]

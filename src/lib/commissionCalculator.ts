@@ -356,7 +356,13 @@ export function syncOrderAffiliateStatus(order: Order): Order {
 
   let newStatus = order.affiliateCommission.status;
 
-  if (order.orderStatus === 'CANCELLED' || order.paymentStatus === 'REJECTED' || order.paymentStatus === 'EXPIRED') {
+  if (
+    order.orderStatus === 'CANCELLED' || 
+    order.paymentStatus === 'REJECTED' || 
+    order.paymentStatus === 'EXPIRED' ||
+    order.paymentStatus === 'REFUNDED'
+  ) {
+    // If order is cancelled or refunded, revoke commission
     newStatus = 'CANCELLED';
   } else if (order.orderStatus === 'COMPLETED' || order.paymentStatus === 'PAID') {
     if (newStatus === 'PENDING') {

@@ -108,6 +108,8 @@ export const saveStoredCategories = (categories: Category[]) => {
           slug: cat.slug,
           description: cat.description,
           image_url: cat.imageUrl,
+          image_path: cat.imagePath || null,
+          parent_id: cat.parentId || null,
           icon: cat.icon,
           order_index: cat.orderIndex,
           is_active: cat.isActive,
@@ -163,6 +165,7 @@ export const saveStoredProducts = (products: Product[]) => {
           name: prod.name,
           description: prod.description,
           category_id: prod.categoryId,
+          subcategory_id: prod.subcategoryId || null,
           price: prod.price,
           stock: prod.stock,
           unit: prod.unit,
@@ -311,6 +314,13 @@ export const saveStoredOrder = (order: Order): Order => {
           payment_link_url: order.paymentLinkUrl,
           payment_gateway: order.paymentGateway,
           payment_reference: order.paymentReference,
+          referral_code: order.referralCode || null,
+          affiliate_commission: order.affiliateCommission || null,
+          unique_code: order.uniqueCode || 0,
+          artopay_payment_id: order.artopayPaymentId || null,
+          artopay_customer_token: order.artopayCustomerToken || null,
+          is_test_transaction: Boolean(order.isTestTransaction),
+          simulation_note: order.simulationNote || null,
           paid_at: order.paidAt,
           payment_expires_at: order.paymentExpiresAt,
           created_at: order.createdAt,
@@ -636,3 +646,307 @@ export const uploadProductImageToStorage = async (file: File): Promise<string> =
     reader.readAsDataURL(file);
   });
 };
+
+export interface UploadResult {
+  url: string;
+  path: string;
+}
+
+export const validateImageFile = (file: File, maxSizeBytes = 5 * 1024 * 1024): { valid: boolean; error?: string } => {
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/jpg'];
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const allowedExts = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+  
+  if (!allowedTypes.includes(file.type) && !allowedExts.includes(ext)) {
+    return { valid: false, error: 'Format berkas tidak didukung. Harap unggah berkas gambar (JPG, PNG, WebP, atau GIF).' };
+  }
+  
+  if (file.size > maxSizeBytes) {
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+    return { valid: false, error: `Ukuran berkas (${sizeMb} MB) melebihi batas maksimum 5 MB.` };
+  }
+  
+  return { valid: true };
+};
+
+export const uploadCategoryImageToStorage = async (file: File): Promise<UploadResult> => {
+  const validation = validateImageFile(file);
+  if (!validation.valid) {
+    throw new Error(validation.error);
+  }
+
+  const fileExt = (file.name.split('.').pop() || 'jpg').toLowerCase();
+  const cleanFileName = file.name.replace(/[^a-zA-Z0-9]/g, '_');
+  const filePath = `categories/${Date.now()}_${cleanFileName}.${fileExt}`;
+
+  if (supabase) {
+    try {
+      const bucketsToTry = ['category-images', 'shop-assets', 'product-images'];
+      for (const bucketName of bucketsToTry) {
+        try {
+          const { data, error } = await supabase.storage
+            .from(bucketName)
+            .upload(filePath, file, {
+              cacheControl: '3600',
+              upsert: true
+            });
+
+          if (!error && data) {
+            const { data: publicUrlData } = supabase.storage
+              .from(bucketName)
+              .getPublicUrl(filePath);
+
+            if (publicUrlData?.publicUrl) {
+              return { url: publicUrlData.publicUrl, path: filePath };
+            }
+          }
+        } catch {}
+      }
+    } catch (storageErr) {
+      console.warn('Supabase storage category upload warning:', storageErr);
+    }
+  }
+
+  return new Promise<UploadResult>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve({ url: reader.result, path: `local_${Date.now()}` });
+      } else {
+        reject(new Error('Gagal membaca data gambar.'));
+      }
+    };
+    reader.onerror = () => reject(new Error('Gagal membaca data gambar dari perangkat.'));
+    reader.readAsDataURL(file);
+  });
+};
+
+export const deleteStoredCategory = async (categoryId: string) => {
+  const current = getStoredCategories();
+  const updated = current.filter(c => c.id !== categoryId);
+  saveStoredCategories(updated);
+
+  if (supabase) {
+    try {
+      await supabase.from('categories').delete().eq('id', categoryId);
+    } catch (err) {
+      console.warn('Supabase category delete warning:', err);
+    }
+  }
+};
+
+/**
+ * Checks whether Supabase is required but unconfigured in production environment.
+ */
+export const checkSupabaseProductionStatus = (): {
+  isProduction: boolean;
+  isConfigured: boolean;
+  isMissingInProduction: boolean;
+  message?: string;
+} => {
+  const isProd = Boolean(
+    (import.meta as any).env?.PROD ||
+    (import.meta as any).env?.MODE === 'production'
+  );
+  const isMissing = isProd && !isSupabaseConfigured;
+  return {
+    isProduction: isProd,
+    isConfigured: isSupabaseConfigured,
+    isMissingInProduction: isMissing,
+    message: isMissing
+      ? 'PERINGATAN KRITIS: Supabase belum dikonfigurasi di lingkungan produksi. Pesanan, referral, dan komisi memerlukan variabel VITE_SUPABASE_URL dan VITE_SUPABASE_ANON_KEY agar tersimpan permanen dan dapat diakses multi-perangkat.'
+      : undefined
+  };
+};
+
+/**
+ * Loads live data directly from Supabase to serve as primary persistent source of truth.
+ */
+export const fetchDataFromSupabase = async (): Promise<{
+  products?: Product[];
+  categories?: Category[];
+  orders?: Order[];
+  affiliates?: AffiliateApplication[];
+  campaigns?: AffiliateCampaign[];
+  storeConfig?: StoreConfig;
+} | null> => {
+  if (!isSupabaseConfigured || !supabase) {
+    return null;
+  }
+
+  try {
+    const results: any = {};
+
+    // 1. Products
+    const { data: dbProducts, error: prodErr } = await supabase.from('products').select('*');
+    if (!prodErr && dbProducts && dbProducts.length > 0) {
+      results.products = dbProducts.map((d: any) => ({
+        id: d.id,
+        sku: d.sku,
+        name: d.name,
+        description: d.description || '',
+        categoryId: d.category_id,
+        subcategoryId: d.subcategory_id || undefined,
+        price: Number(d.price),
+        originalPrice: d.original_price ? Number(d.original_price) : undefined,
+        stock: Number(d.stock),
+        images: d.images || [],
+        unit: d.unit || 'pcs',
+        isActive: d.is_active,
+        isFeatured: Boolean(d.is_featured),
+        slug: d.slug,
+        variations: d.variations || [],
+        viewCount: Number(d.view_count || 0),
+        salesCount: Number(d.sales_count || 0),
+        useCustomCommission: Boolean(d.use_custom_commission),
+        customCommissionRate: d.custom_commission_rate !== null ? Number(d.custom_commission_rate) : undefined,
+        createdAt: d.created_at,
+        updatedAt: d.updated_at
+      }));
+      // Sync local storage mirror
+      try {
+        localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(results.products));
+      } catch {}
+    }
+
+    // 2. Categories
+    const { data: dbCats, error: catErr } = await supabase.from('categories').select('*').order('order_index');
+    if (!catErr && dbCats && dbCats.length > 0) {
+      results.categories = dbCats.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        description: c.description || '',
+        imageUrl: c.image_url || '',
+        imagePath: c.image_path || undefined,
+        icon: c.icon || 'Package',
+        orderIndex: Number(c.order_index || 0),
+        isActive: Boolean(c.is_active),
+        parentId: c.parent_id || null,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at
+      }));
+      try {
+        localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(results.categories));
+      } catch {}
+    }
+
+    // 3. Orders
+    const { data: dbOrders, error: ordErr } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+    if (!ordErr && dbOrders && dbOrders.length > 0) {
+      results.orders = dbOrders.map((d: any) => ({
+        id: d.id,
+        orderNumber: d.order_number,
+        customerName: d.customer_name,
+        customerPhone: d.customer_phone,
+        customerEmail: d.customer_email || undefined,
+        deliveryAddress: d.delivery_address,
+        customerProvince: d.customer_province || undefined,
+        customerCity: d.customer_city || undefined,
+        customerDistrict: d.customer_district || '',
+        customerPostalCode: d.customer_postal_code || undefined,
+        deliveryNotes: d.delivery_notes || undefined,
+        shippingMethod: d.shipping_method || 'AIR_REGULAR',
+        shippingCost: Number(d.shipping_cost || 0),
+        estimatedAirDeliveryDays: d.estimated_air_delivery_days ? Number(d.estimated_air_delivery_days) : undefined,
+        shippingCarrier: d.shipping_carrier || undefined,
+        items: d.items || [],
+        subtotal: Number(d.subtotal || 0),
+        serviceFee: Number(d.service_fee || 0),
+        uniqueCode: Number(d.unique_code || 0),
+        total: Number(d.total || 0),
+        paymentStatus: d.payment_status || 'PENDING',
+        orderStatus: d.order_status || 'NEW',
+        paymentMethod: d.payment_method || 'ARTOPAY_LINK',
+        paymentGateway: d.payment_gateway || 'ARTOPAY',
+        paymentLinkUrl: d.payment_link_url || undefined,
+        paymentReference: d.payment_reference || undefined,
+        artopayPaymentId: d.artopay_payment_id || undefined,
+        artopayCustomerToken: d.artopay_customer_token || undefined,
+        isTestTransaction: Boolean(d.is_test_transaction),
+        simulationNote: d.simulation_note || undefined,
+        paidAt: d.paid_at || undefined,
+        paymentExpiresAt: d.payment_expires_at || undefined,
+        referralCode: d.referral_code || undefined,
+        affiliateCommission: d.affiliate_commission || undefined,
+        createdAt: d.created_at,
+        updatedAt: d.updated_at
+      }));
+      try {
+        localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(results.orders));
+      } catch {}
+    }
+
+    // 4. Affiliate Applications
+    const { data: dbAffiliates, error: affErr } = await supabase.from('affiliate_applications').select('*');
+    if (!affErr && dbAffiliates && dbAffiliates.length > 0) {
+      results.affiliates = dbAffiliates.map((a: any) => ({
+        id: a.id,
+        fullName: a.full_name,
+        phone: a.phone,
+        email: a.email,
+        promotionChannel: a.promotion_channel,
+        notes: a.notes || undefined,
+        status: a.status,
+        referralCode: a.referral_code,
+        passwordHash: a.password_hash || undefined,
+        userId: a.user_id || undefined,
+        createdAt: a.created_at
+      }));
+      try {
+        localStorage.setItem(STORAGE_KEYS.AFFILIATES, JSON.stringify(results.affiliates));
+      } catch {}
+    }
+
+    // 5. Affiliate Campaigns
+    const { data: dbCampaigns, error: campErr } = await supabase.from('affiliate_campaigns').select('*');
+    if (!campErr && dbCampaigns && dbCampaigns.length > 0) {
+      results.campaigns = dbCampaigns.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        description: c.description || undefined,
+        productIds: c.product_ids || [],
+        commissionRate: Number(c.commission_rate),
+        startDate: c.start_date,
+        endDate: c.end_date,
+        status: c.status,
+        budgetLimit: c.budget_limit !== null ? Number(c.budget_limit) : undefined,
+        maxOrders: c.max_orders !== null ? Number(c.max_orders) : undefined,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at
+      }));
+      try {
+        localStorage.setItem(STORAGE_KEYS.CAMPAIGNS, JSON.stringify(results.campaigns));
+      } catch {}
+    }
+
+    // 6. Store Config
+    const { data: dbConfig, error: confErr } = await supabase.from('store_config').select('*').limit(1).single();
+    if (!confErr && dbConfig) {
+      results.storeConfig = {
+        storeName: dbConfig.store_name,
+        storeTagline: dbConfig.store_tagline,
+        storeAddress: dbConfig.store_address,
+        storePhone: dbConfig.store_phone,
+        isOpen: Boolean(dbConfig.is_open),
+        minOrderAmount: Number(dbConfig.min_order_amount || 0),
+        defaultDeliveryFee: Number(dbConfig.default_delivery_fee || 15000),
+        airFreightDeliveryFee: dbConfig.air_freight_delivery_fee ? Number(dbConfig.air_freight_delivery_fee) : 15000,
+        airFreightEstimatedDays: dbConfig.air_freight_estimated_days ? Number(dbConfig.air_freight_estimated_days) : 14,
+        serviceFee: Number(dbConfig.service_fee || 0),
+        defaultAffiliateCommissionRate: Number(dbConfig.default_affiliate_commission_rate ?? 15),
+        qrisImageUrl: dbConfig.qris_image_url || undefined
+      };
+      try {
+        localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(results.storeConfig));
+      } catch {}
+    }
+
+    return results;
+  } catch (fetchErr) {
+    console.warn('[Supabase] Initial data synchronization error:', fetchErr);
+    return null;
+  }
+};
+
+

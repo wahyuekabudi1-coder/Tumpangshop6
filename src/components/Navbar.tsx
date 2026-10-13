@@ -1,6 +1,7 @@
 import React from 'react';
 import { ShoppingBag, Search, ShieldCheck, User, Truck, Store } from 'lucide-react';
 import { UserProfile } from '../types';
+import PWAInstallButton from './PWAInstallButton';
 
 interface NavbarProps {
   searchQuery: string;
@@ -76,6 +77,9 @@ export default function Navbar({
               </button>
             )}
 
+
+            {/* PWA Install Button (renders only when supported and not yet installed) */}
+            <PWAInstallButton variant="navbar" className="hidden sm:flex" />
 
             {/* User Profile / Login */}
             <button

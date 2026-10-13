@@ -272,8 +272,8 @@ export default function CartPage({
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-slate-500 text-xs">
-                    <span>Ongkos Kirim & Layanan</span>
-                    <span className="italic">Dihitung di Checkout</span>
+                    <span>Pengiriman Reguler via Udara</span>
+                    <span className="font-semibold text-slate-700">Dikonfirmasi di Checkout (~14 hari)</span>
                   </div>
                 </div>
 

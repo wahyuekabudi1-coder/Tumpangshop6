@@ -199,8 +199,8 @@ export default function CartDrawer({
               </span>
             </div>
             <div className="flex items-center justify-between text-xs text-slate-500 mb-3">
-              <span>Estimasi Pengiriman:</span>
-              <span className="text-slate-600">Dihitung saat checkout</span>
+              <span>Pengiriman Reguler via Udara:</span>
+              <span className="text-slate-700 font-semibold">~14 hari kalender</span>
             </div>
 
             <div className="flex items-center justify-between text-base font-bold text-slate-900 pt-2 border-t border-slate-200 mb-4">

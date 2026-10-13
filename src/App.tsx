@@ -13,6 +13,7 @@ import AdminDashboard from './components/AdminDashboard';
 import AdminLoginPage from './components/AdminLoginPage';
 import AffiliatePage from './components/AffiliatePage';
 import Footer from './components/Footer';
+import PWAInstallButton from './components/PWAInstallButton';
 import { 
   Product, Category, CartItem, Order, StoreConfig, 
   UserProfile, ProductVariationOption, ProductReview,
@@ -28,13 +29,21 @@ import {
   getStoredAffiliates, saveStoredAffiliate,
   getStoredCampaigns, saveStoredCampaigns,
   incrementProductViewCount,
-  supabase, isSupabaseConfigured
+  supabase, isSupabaseConfigured,
+  fetchDataFromSupabase, checkSupabaseProductionStatus
 } from './lib/supabase';
 import { getProductSlug } from './data/mockData';
 import { 
+  processIncomingAffiliateLink, 
+  getActiveAffiliateAttribution, 
+  getStoredAdminToken, 
+  clearStoredAdminToken 
+} from './lib/affiliateAttribution';
+
+import { 
   Store, ShieldCheck, Truck, CheckCircle2, 
   ShoppingBag, Search, Sparkles, TrendingUp,
-  Eye, Flame, Filter, ArrowUpDown, Clock
+  Eye, Flame, Filter, ArrowUpDown, Clock, AlertTriangle, X
 } from 'lucide-react';
 
 export default function App() {
@@ -62,6 +71,64 @@ export default function App() {
       return '';
     }
   });
+
+  // Supabase live database synchronization & production environment check
+  const [supabaseProdStatus] = useState(checkSupabaseProductionStatus);
+  const [dismissProdWarning, setDismissProdWarning] = useState(false);
+
+  useEffect(() => {
+    if (isSupabaseConfigured) {
+      fetchDataFromSupabase().then(dbData => {
+        if (dbData) {
+          if (dbData.products && dbData.products.length > 0) setProducts(dbData.products);
+          if (dbData.categories && dbData.categories.length > 0) setCategories(dbData.categories);
+          if (dbData.orders && dbData.orders.length > 0) setOrders(dbData.orders);
+          if (dbData.affiliates && dbData.affiliates.length > 0) setAffiliateApps(dbData.affiliates);
+          if (dbData.campaigns && dbData.campaigns.length > 0) setCampaigns(dbData.campaigns);
+          if (dbData.storeConfig) setStoreConfig(dbData.storeConfig);
+          console.log('[Tumpang Shop] Live data synchronized with Supabase database.');
+        }
+      }).catch(err => {
+        console.warn('[Tumpang Shop] Supabase sync notice:', err);
+      });
+    }
+  }, []);
+
+  // Admin Backend Session Token Verification (Protects against localStorage tampering)
+  useEffect(() => {
+    const adminToken = getStoredAdminToken();
+    const stored = currentUser || getStoredUser();
+    if (stored?.role === 'admin') {
+      if (!adminToken) {
+        console.warn('[Admin Auth] Missing admin session token, requiring login.');
+        setCurrentUser(null);
+        saveStoredUser(null);
+        setIsAdminView(false);
+        if (window.location.pathname.startsWith('/admin')) {
+          setIsAdminLoginView(true);
+        }
+      } else {
+        fetch('/api/admin/session', {
+          headers: { 'Authorization': `Bearer ${adminToken}` }
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (!data.success) {
+              console.warn('[Admin Auth] Backend rejected admin session token:', data.error);
+              clearStoredAdminToken();
+              setCurrentUser(null);
+              saveStoredUser(null);
+              setIsAdminView(false);
+              if (window.location.pathname.startsWith('/admin')) {
+                setIsAdminLoginView(true);
+              }
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  }, [currentUser]);
+
 
   // Cart state persisted to localStorage
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
@@ -94,6 +161,7 @@ export default function App() {
 
   // Filtering & View state
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
+  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'default' | 'price_asc' | 'price_desc' | 'name_asc'>('default');
   const [inStockOnly, setInStockOnly] = useState(false);
@@ -136,28 +204,38 @@ export default function App() {
     setActiveOrderDetailId(null);
     setActiveProductDetail(null);
 
-    // Extract referral tracking code from URL query (?ref=CODE or ?referral=CODE)
+    // Process automatic TikTok-style incoming affiliate link (?ref=CODE, ?referral=CODE, ?aff=CODE)
     try {
       const searchParams = new URLSearchParams(window.location.search);
-      const refParam = searchParams.get('ref') || searchParams.get('referral');
-      if (refParam && refParam.trim()) {
-        const cleanRef = refParam.trim().toUpperCase();
-        setActiveReferralCode(cleanRef);
-        localStorage.setItem('tumpang_shop_active_referral', cleanRef);
+      const hasRefParam = searchParams.get('ref') || searchParams.get('referral') || searchParams.get('aff');
+      if (hasRefParam) {
+        const attr = processIncomingAffiliateLink(window.location.search, path, affiliateApps);
+        if (attr) {
+          setActiveReferralCode(attr.referralCode);
+        }
+      } else {
+        const activeAttr = getActiveAffiliateAttribution(affiliateApps);
+        if (activeAttr) {
+          setActiveReferralCode(activeAttr.referralCode);
+        }
       }
-    } catch {}
+    } catch (err) {
+      console.warn('Error syncing affiliate attribution:', err);
+    }
 
     if (path === '/admin/login') {
-      const stored = getStoredUser();
-      if (stored && stored.role === 'admin') {
+      const stored = currentUser || getStoredUser();
+      const adminToken = getStoredAdminToken();
+      if (stored && stored.role === 'admin' && adminToken) {
         setIsAdminView(true);
         window.history.replaceState({}, '', '/admin');
       } else {
         setIsAdminLoginView(true);
       }
     } else if (path.startsWith('/admin')) {
-      const stored = getStoredUser();
-      if (stored && stored.role === 'admin') {
+      const stored = currentUser || getStoredUser();
+      const adminToken = getStoredAdminToken();
+      if (stored && stored.role === 'admin' && adminToken) {
         setIsAdminView(true);
       } else {
         // Not authenticated as admin -> redirect to /admin/login
@@ -273,15 +351,41 @@ export default function App() {
 
   // Navigate to hidden admin login page (/admin/login)
   const handleNavigateToAdminLogin = () => {
-    const user = currentUser || getStoredUser();
-    if (user && user.role === 'admin') {
+    const isDevOrPreview = Boolean(
+      (import.meta as any).env?.DEV || 
+      (import.meta as any).env?.MODE !== 'production' ||
+      window.location.hostname === 'localhost' ||
+      window.location.hostname.includes('127.0.0.1') ||
+      window.location.hostname.includes('webcontainer') ||
+      window.location.hostname.includes('run.app') ||
+      window.location.hostname.includes('aistudio')
+    );
+
+    if (isDevOrPreview) {
+      const devAdmin: UserProfile = {
+        id: 'admin-dev',
+        fullName: 'Administrator (Dev)',
+        email: 'admin@tumpang.shop',
+        role: 'admin'
+      };
+      if (!currentUser || currentUser.role !== 'admin') {
+        handleLogin(devAdmin);
+      }
       window.history.pushState({}, '', '/admin');
       setIsAdminView(true);
       setIsAdminLoginView(false);
+      showToast('Masuk ke Admin Dashboard (Mode Dev/Preview)');
     } else {
-      window.history.pushState({}, '', '/admin/login');
-      setIsAdminLoginView(true);
-      setIsAdminView(false);
+      const user = currentUser || getStoredUser();
+      if (user && user.role === 'admin') {
+        window.history.pushState({}, '', '/admin');
+        setIsAdminView(true);
+        setIsAdminLoginView(false);
+      } else {
+        window.history.pushState({}, '', '/admin/login');
+        setIsAdminLoginView(true);
+        setIsAdminView(false);
+      }
     }
     setActiveProductDetail(null);
     setIsAffiliateView(false);
@@ -318,10 +422,10 @@ export default function App() {
   // CALCULATE REAL METRICS: PRODUK TERLARIS & TERPOPULER
   // --------------------------------------------------------------------------
   
-  // Real sales calculation: Sum of units sold strictly from COMPLETED orders
+  // Real sales calculation: Sum of units sold strictly from COMPLETED / DELIVERED orders
   const salesMap = useMemo(() => {
     const map = new Map<string, number>();
-    const completedOrders = orders.filter(o => o.orderStatus === 'COMPLETED');
+    const completedOrders = orders.filter(o => o.orderStatus === 'COMPLETED' || o.orderStatus === 'DELIVERED');
     for (const order of completedOrders) {
       for (const item of order.items) {
         const current = map.get(item.productId) || 0;
@@ -352,16 +456,17 @@ export default function App() {
       .slice(0, 8);
   }, [activeProducts]);
 
-  // C. Semua Produk (Filtered by category, search, stock, and user sorting)
+  // C. Semua Produk (Filtered by category, subcategory, search, stock, and user sorting)
   const allFilteredProducts = useMemo(() => {
     let list = activeProducts.filter((p) => {
       const matchesCategory = selectedCategoryId === 'all' || p.categoryId === selectedCategoryId;
+      const matchesSubcategory = selectedSubcategoryId === 'all' || p.subcategoryId === selectedSubcategoryId;
       const matchesSearch = !searchQuery.trim() || 
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.sku.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStock = !inStockOnly || p.stock > 0;
-      return matchesCategory && matchesSearch && matchesStock;
+      return matchesCategory && matchesSubcategory && matchesSearch && matchesStock;
     });
 
     if (sortBy === 'price_asc') {
@@ -373,7 +478,7 @@ export default function App() {
     }
 
     return list;
-  }, [activeProducts, selectedCategoryId, searchQuery, inStockOnly, sortBy]);
+  }, [activeProducts, selectedCategoryId, selectedSubcategoryId, searchQuery, inStockOnly, sortBy]);
 
   // --------------------------------------------------------------------------
   // CART & BUY NOW HANDLERS
@@ -569,10 +674,7 @@ export default function App() {
     handleNavigateToPaymentInstruction(order.id);
 
     if (paymentLinkUrl) {
-      showToast(`✓ Pesanan ${order.orderNumber} dibuat! Membuka tautan pembayaran gateway...`);
-      setTimeout(() => {
-        window.open(paymentLinkUrl, '_blank', 'noopener,noreferrer');
-      }, 800);
+      showToast(`✓ Pesanan ${order.orderNumber} berhasil dibuat! Silakan buka tautan pembayaran resmi.`);
     } else {
       showToast(`✓ Pesanan ${order.orderNumber} berhasil dibuat dengan status Pending!`);
     }
@@ -642,6 +744,32 @@ export default function App() {
         </div>
       )}
 
+      {/* Production Warning if Supabase is unconfigured (Requirement 3: Explicit Production Error) */}
+      {supabaseProdStatus.isMissingInProduction && !dismissProdWarning && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2.5 text-amber-900 dark:text-amber-200">
+          <div className="max-w-7xl mx-auto flex items-start sm:items-center justify-between gap-3 text-xs sm:text-sm">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
+              <span>
+                <strong>Perhatian Konfigurasi Produksi:</strong> Basis data Supabase belum terhubung (variabel <code className="font-mono bg-amber-500/20 px-1 py-0.5 rounded">VITE_SUPABASE_URL</code> dan <code className="font-mono bg-amber-500/20 px-1 py-0.5 rounded">VITE_SUPABASE_ANON_KEY</code> belum diisi). Data pesanan dan komisi saat ini hanya tersimpan di browser lokal.
+              </span>
+            </div>
+            <button
+              onClick={() => setDismissProdWarning(true)}
+              className="text-amber-700 dark:text-amber-400 hover:text-amber-950 p-1"
+              title="Tutup pemberitahuan"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* PWA Install Banner (renders only when supported, non-intrusive) */}
+      {!isAdminView && !isAdminLoginView && (
+        <PWAInstallButton variant="banner" />
+      )}
+
       {/* Navbar (Only in customer views) */}
       {!isAdminView && !isAdminLoginView && (
         <Navbar
@@ -708,9 +836,10 @@ export default function App() {
             products={products}
             campaigns={campaigns}
             orders={orders}
+            affiliates={affiliateApps}
             onBack={handleBackFromAffiliate}
             onSubmitApplication={handleAffiliateSubmit}
-            existingApplication={affiliateApps[0] || null}
+            existingApplication={null}
           />
           <Footer
             storeConfig={storeConfig}
@@ -790,6 +919,9 @@ export default function App() {
                 onNavigateToOrderDetail={handleNavigateToOrderDetail}
                 onNavigateToCatalog={handleBackToCatalog}
                 onShowToast={showToast}
+                onOrderUpdated={(updated) => {
+                  handleUpdateOrders(orders.map(o => o.id === updated.id ? updated : o));
+                }}
               />
               <Footer
                 storeConfig={storeConfig}
@@ -938,12 +1070,17 @@ export default function App() {
               </div>
             ) : (
               <>
-                {/* 1. KATEGORI BELANJA DENGAN FOTO VISUAL */}
+                {/* 1. KATEGORI BELANJA DENGAN FOTO VISUAL & SUBKATEGORI */}
                 <CategoryVisualCards
                   categories={categories}
                   products={products}
                   selectedCategoryId={selectedCategoryId}
-                  onSelectCategory={setSelectedCategoryId}
+                  onSelectCategory={(catId) => {
+                    setSelectedCategoryId(catId);
+                    setSelectedSubcategoryId('all');
+                  }}
+                  selectedSubcategoryId={selectedSubcategoryId}
+                  onSelectSubcategory={setSelectedSubcategoryId}
                 />
 
                 {/* 2. BAGIAN A: PRODUK TERLARIS (HANYA DITAMPILKAN JIKA ADA PENJUALAN) */}
@@ -1072,6 +1209,7 @@ export default function App() {
                         onClick={() => {
                           setSearchQuery('');
                           setSelectedCategoryId('all');
+                          setSelectedSubcategoryId('all');
                           setInStockOnly(false);
                           setSortBy('default');
                         }}

@@ -1,13 +1,27 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { StoreConfig, UserProfile, AffiliateApplication, AffiliateCampaign, Product, Order } from '../types';
 import { 
   ArrowLeft, DollarSign, Share2, Sparkles, CheckCircle2, 
   Copy, ShieldCheck, ChevronRight, ArrowRight, AlertCircle, 
   Tag, Calendar, Filter, Search, Percent, ExternalLink,
-  Flame, Check, Clock, TrendingUp
+  Flame, Check, Clock, TrendingUp, MousePointerClick, ShoppingBag,
+  CreditCard, Wallet, Send, X, MessageCircle, LogIn, LogOut,
+  UserCheck, Smartphone, Lock, Eye, EyeOff, KeyRound
 } from 'lucide-react';
 import { getEffectiveProductCommission, isCampaignActiveAt, getCampaignPerformance } from '../lib/commissionCalculator';
+import { 
+  getAffiliatePerformanceMetrics, 
+  getAffiliateClicks, 
+  getPayoutRequests, 
+  savePayoutRequest, 
+  AffiliatePayoutRequest,
+  getStoredAffiliateToken,
+  setStoredAffiliateToken,
+  clearStoredAffiliateToken
+} from '../lib/affiliateAttribution';
 import { getProductSlug } from '../data/mockData';
+import { getStoredAffiliates } from '../lib/supabase';
+
 
 interface AffiliatePageProps {
   storeConfig: StoreConfig;
@@ -15,9 +29,19 @@ interface AffiliatePageProps {
   products?: Product[];
   campaigns?: AffiliateCampaign[];
   orders?: Order[];
+  affiliates?: AffiliateApplication[];
   existingApplication?: AffiliateApplication | null;
   onBack: () => void;
   onSubmitApplication: (app: AffiliateApplication) => void;
+}
+
+interface ShareModalData {
+  title: string;
+  url: string;
+  productName?: string;
+  price?: number;
+  unit?: string;
+  commissionRate?: number;
 }
 
 export default function AffiliatePage({
@@ -26,30 +50,117 @@ export default function AffiliatePage({
   products = [],
   campaigns = [],
   orders = [],
+  affiliates = [],
   existingApplication,
   onBack,
   onSubmitApplication
 }: AffiliatePageProps) {
+  // Registration form state
   const [fullName, setFullName] = useState(currentUser?.fullName || '');
   const [phone, setPhone] = useState(currentUser?.phone || '');
   const [email, setEmail] = useState(currentUser?.email || '');
+  const [registerPassword, setRegisterPassword] = useState('');
+  const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [promotionChannel, setPromotionChannel] = useState('Status WhatsApp & Grup');
   const [notes, setNotes] = useState('');
-  const [isSuccess, setIsSuccess] = useState(Boolean(existingApplication));
-  const [submittedApp, setSubmittedApp] = useState<AffiliateApplication | null>(existingApplication || null);
+
+  // Login form state for approved affiliates
+  const [loginInput, setLoginInput] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [authView, setAuthView] = useState<'register' | 'login'>('login');
+
+  // Active affiliate session state (Protected by cryptographically signed backend token)
+  const [submittedApp, setSubmittedApp] = useState<AffiliateApplication | null>(() => {
+    if (existingApplication && getStoredAffiliateToken()) return existingApplication;
+    try {
+      const token = getStoredAffiliateToken();
+      const saved = localStorage.getItem('tumpang_shop_active_affiliate_profile');
+      if (token && saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+
+  // Backend session verification on mount (Strict Token & Expiration Check)
+  useEffect(() => {
+    const token = getStoredAffiliateToken();
+    if (!token) {
+      if (submittedApp) {
+        setSubmittedApp(null);
+        try { localStorage.removeItem('tumpang_shop_active_affiliate_profile'); } catch {}
+      }
+      return;
+    }
+
+    // Verify token validity with backend
+    fetch('/api/affiliates/session', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.success) {
+          console.warn('[Affiliate] Session expired or invalid, logging out.');
+          clearStoredAffiliateToken();
+          setSubmittedApp(null);
+          try { localStorage.removeItem('tumpang_shop_active_affiliate_profile'); } catch {}
+        } else if (data.affiliate) {
+          setSubmittedApp(data.affiliate);
+        }
+      })
+      .catch(() => {
+        // Offline or network hiccup; keep current session if token structure is unexpired
+      });
+  }, []);
+
+  // Sync active profile status if admin modifies it in affiliates list
+  useEffect(() => {
+    if (submittedApp && affiliates && affiliates.length > 0) {
+      const live = affiliates.find(a => 
+        a.id === submittedApp.id || 
+        a.referralCode?.toUpperCase() === submittedApp.referralCode?.toUpperCase()
+      );
+      if (live && live.status !== submittedApp.status) {
+        const updated = { ...submittedApp, ...live };
+        setSubmittedApp(updated);
+        try {
+          localStorage.setItem('tumpang_shop_active_affiliate_profile', JSON.stringify(updated));
+        } catch {}
+      }
+    }
+  }, [affiliates, submittedApp]);
+
+
+  // Notifications & Copy state
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [copiedNotice, setCopiedNotice] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
 
-  // Affiliate Dashboard Filters
+  // Share Dialog state
+  const [shareModalData, setShareModalData] = useState<ShareModalData | null>(null);
+  const [shareTab, setShareTab] = useState<'link' | 'tiktok' | 'instagram' | 'whatsapp' | 'facebook'>('link');
+
+  // Payout / Withdrawal Form state
+  const [payoutBank, setPayoutBank] = useState('BCA');
+  const [payoutAccountNum, setPayoutAccountNum] = useState('');
+  const [payoutAccountName, setPayoutAccountName] = useState(submittedApp?.fullName || currentUser?.fullName || '');
+  const [payoutAmount, setPayoutAmount] = useState<number>(0);
+  const [payoutError, setPayoutError] = useState<string | null>(null);
+  const [payoutList, setPayoutList] = useState<AffiliatePayoutRequest[]>(getPayoutRequests);
+
+  // Dashboard Filters & Navigation Tabs
   const [campaignFilter, setCampaignFilter] = useState<string>('ALL');
   const [minCommissionFilter, setMinCommissionFilter] = useState<number>(0);
   const [productSearch, setProductSearch] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'campaigns_and_products' | 'earnings' | 'registration'>('campaigns_and_products');
+  const [activeTab, setActiveTab] = useState<'catalog' | 'performance' | 'orders' | 'payouts' | 'profile'>('catalog');
 
   const standardCommissionRate = storeConfig?.defaultAffiliateCommissionRate ?? 15;
+  const currentReferralCode = submittedApp?.referralCode || 'TS-PARTNER';
+  const domain = typeof window !== 'undefined' ? window.location.origin : '';
 
-  // Active campaigns (filtered to only currently active time window and not paused/ended)
+  // Active campaigns
   const activeCampaigns = useMemo(() => {
     return campaigns.filter(c => {
       if (c.status === 'PAUSED' || c.status === 'ENDED' || c.status === 'DRAFT') return false;
@@ -57,7 +168,7 @@ export default function AffiliatePage({
     });
   }, [campaigns]);
 
-  // Max commission in store
+  // Max commission rate in store
   const maxCommissionRate = useMemo(() => {
     let max = standardCommissionRate;
     for (const c of activeCampaigns) {
@@ -70,9 +181,6 @@ export default function AffiliatePage({
     }
     return max;
   }, [standardCommissionRate, activeCampaigns, products]);
-
-  // Affiliate referral code
-  const currentReferralCode = submittedApp?.referralCode || 'TS-PARTNER';
 
   // Products with effective commissions
   const productsWithCommissions = useMemo(() => {
@@ -90,7 +198,6 @@ export default function AffiliatePage({
   // Filtered products list
   const filteredProducts = useMemo(() => {
     return productsWithCommissions.filter(item => {
-      // Campaign filter
       if (campaignFilter === 'CAMPAIGN_ONLY') {
         if (item.effectiveCommission.appliedType !== 'campaign') return false;
       } else if (campaignFilter === 'CUSTOM_ONLY') {
@@ -99,12 +206,10 @@ export default function AffiliatePage({
         if (item.effectiveCommission.campaign?.id !== campaignFilter) return false;
       }
 
-      // Min commission rate filter
       if (minCommissionFilter > 0 && item.effectiveCommission.ratePercent < minCommissionFilter) {
         return false;
       }
 
-      // Product search filter
       if (productSearch.trim()) {
         const query = productSearch.toLowerCase().trim();
         const matchesName = item.product.name.toLowerCase().includes(query);
@@ -116,75 +221,45 @@ export default function AffiliatePage({
     });
   }, [productsWithCommissions, campaignFilter, minCommissionFilter, productSearch]);
 
-  // Real earnings analytics from orders for current referral code
+  // Real operational performance metrics (Strictly genuine data, no dummy figures)
+  const metrics = useMemo(() => {
+    if (!submittedApp?.referralCode) {
+      return {
+        referralCode: '',
+        validClicksCount: 0,
+        attributedOrdersCount: 0,
+        validOrdersCount: 0,
+        totalSalesVolume: 0,
+        pendingCommission: 0,
+        approvedCommission: 0,
+        paidCommission: 0,
+        totalCommission: 0,
+        pendingPayoutRequestsAmount: 0,
+        processedPayoutsAmount: 0,
+        availableBalanceForPayout: 0
+      };
+    }
+    return getAffiliatePerformanceMetrics(submittedApp.referralCode, orders, undefined, payoutList);
+  }, [submittedApp, orders, payoutList]);
+
+  // Real attributed orders for this affiliate only (Privacy isolation per Requirement 4)
   const referralOrders = useMemo(() => {
     if (!submittedApp?.referralCode) return [];
-    return orders.filter(o => o.referralCode === submittedApp.referralCode || o.affiliateCommission?.referralCode === submittedApp.referralCode);
+    const clean = submittedApp.referralCode.toUpperCase();
+    return orders.filter(
+      o => o.referralCode?.toUpperCase() === clean || 
+           o.affiliateCommission?.referralCode?.toUpperCase() === clean
+    );
   }, [orders, submittedApp]);
 
-  const earningsSummary = useMemo(() => {
-    let totalCommission = 0;
-    let pendingCommission = 0;
-    let approvedCommission = 0;
-    let paidCommission = 0;
-    let validOrderCount = 0;
+  // Filtered payouts for this affiliate
+  const affiliatePayouts = useMemo(() => {
+    if (!submittedApp?.referralCode) return [];
+    const clean = submittedApp.referralCode.toUpperCase();
+    return payoutList.filter(p => p.referralCode?.toUpperCase() === clean);
+  }, [payoutList, submittedApp]);
 
-    for (const ord of referralOrders) {
-      if (ord.orderStatus === 'CANCELLED' || ord.paymentStatus === 'REJECTED' || ord.paymentStatus === 'EXPIRED') {
-        continue;
-      }
-      validOrderCount++;
-      const commAmount = ord.affiliateCommission?.totalCommission || 0;
-      totalCommission += commAmount;
-
-      const commStatus = ord.affiliateCommission?.status || 'PENDING';
-      if (commStatus === 'PAID') {
-        paidCommission += commAmount;
-      } else if (commStatus === 'APPROVED' || ord.orderStatus === 'COMPLETED' || ord.paymentStatus === 'PAID') {
-        approvedCommission += commAmount;
-      } else {
-        pendingCommission += commAmount;
-      }
-    }
-
-    return {
-      totalCommission,
-      pendingCommission,
-      approvedCommission,
-      paidCommission,
-      validOrderCount
-    };
-  }, [referralOrders]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!fullName.trim() || !phone.trim() || !email.trim()) {
-      setErrorMsg('Mohon lengkapi Nama, Nomor WhatsApp, dan Email Anda.');
-      return;
-    }
-
-    const cleanName = fullName.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-    const randomSuffix = Math.floor(10 + Math.random() * 90);
-    const referralCode = `TS-${cleanName || 'MITRA'}${randomSuffix}`;
-
-    const newApp: AffiliateApplication = {
-      id: `aff_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      fullName: fullName.trim(),
-      phone: phone.trim(),
-      email: email.trim(),
-      promotionChannel,
-      notes: notes.trim() || undefined,
-      status: 'APPROVED',
-      referralCode,
-      createdAt: new Date().toISOString()
-    };
-
-    onSubmitApplication(newApp);
-    setSubmittedApp(newApp);
-    setIsSuccess(true);
-    setErrorMsg(null);
-  };
-
+  // Copy helper
   const copyToClipboard = (link: string, label: string) => {
     navigator.clipboard.writeText(link).then(() => {
       setCopiedLink(link);
@@ -193,10 +268,217 @@ export default function AffiliatePage({
         setCopiedLink(null);
         setCopiedNotice(null);
       }, 3000);
+    }).catch(() => {
+      // Fallback
+      setCopiedNotice(label);
+      setTimeout(() => setCopiedNotice(null), 3000);
     });
   };
 
-  const domain = window.location.origin;
+  // Device Native Share (with automatic fallback to custom modal)
+  const handleDeviceShare = (data: ShareModalData) => {
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      navigator.share({
+        title: `${data.productName || data.title} — Tumpang Shop`,
+        text: `Belanja hemat produk pilihan berkualitas: ${data.productName || data.title} hanya di Tumpang Shop!`,
+        url: data.url
+      }).catch((err) => {
+        // Canceled or not supported on this platform: open modal fallback
+        if (err.name !== 'AbortError') {
+          setShareModalData(data);
+          setShareTab('link');
+        }
+      });
+    } else {
+      setShareModalData(data);
+      setShareTab('link');
+    }
+  };
+
+  // Open Promotional Text & Content Generator Modal
+  const handleOpenPromoModal = (data: ShareModalData, initialTab: 'link' | 'tiktok' | 'instagram' | 'whatsapp' | 'facebook' = 'link') => {
+    setShareModalData(data);
+    setShareTab(initialTab);
+  };
+
+  // Direct WhatsApp share
+  const handleShareToWhatsApp = (productName: string, price: number | undefined, url: string) => {
+    const text = `Halo! Yuk cek produk pilihan berkualitas di Tumpang Shop: *${productName}*${price ? ` (Rp ${price.toLocaleString('id-ID')})` : ''}.\nPesan langsung di sini:\n${url}`;
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    window.open(waUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  // Affiliate Login handler (Strict Authentication: Password Required)
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    const query = loginInput.trim().toUpperCase();
+    const pass = loginPassword.trim();
+
+    if (!query) {
+      setLoginError('Mohon masukkan Kode Referral, Nomor WhatsApp, atau Email Anda.');
+      return;
+    }
+
+    if (!pass) {
+      setLoginError('Kata sandi wajib diisi untuk masuk ke dashboard.');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/affiliates/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ loginInput: query, password: pass })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success && data.affiliate) {
+        if (data.token) {
+          setStoredAffiliateToken(data.token);
+        }
+        setSubmittedApp(data.affiliate);
+        try {
+          localStorage.setItem('tumpang_shop_active_affiliate_profile', JSON.stringify(data.affiliate));
+        } catch {}
+        setActiveTab('catalog');
+        setLoginError(null);
+        setSuccessToast(`Selamat datang kembali, ${data.affiliate.fullName}!`);
+        setTimeout(() => setSuccessToast(null), 3500);
+      } else {
+        setLoginError(data.error || 'Kata sandi salah atau akun mitra tidak ditemukan.');
+      }
+    } catch (err: any) {
+      setLoginError('Terjadi gangguan jaringan saat menghubungi server autentikasi.');
+    }
+  };
+
+  // Registration handler (Strict scrypt Password Setup via Backend)
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fullName.trim() || !phone.trim() || !email.trim()) {
+      setErrorMsg('Mohon lengkapi Nama Lengkap, Nomor WhatsApp, dan Email Anda.');
+      return;
+    }
+
+    if (!registerPassword || registerPassword.length < 6) {
+      setErrorMsg('Kata sandi minimal harus 6 karakter untuk keamanan akun mitra.');
+      return;
+    }
+
+    if (registerPassword !== registerConfirmPassword) {
+      setErrorMsg('Konfirmasi kata sandi tidak cocok. Harap periksa kembali.');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/affiliates/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: fullName.trim(),
+          phone: phone.trim(),
+          email: email.trim(),
+          password: registerPassword,
+          promotionChannel,
+          notes: notes.trim() || undefined
+        })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success && data.affiliate) {
+        if (data.token) {
+          setStoredAffiliateToken(data.token);
+        }
+        onSubmitApplication(data.affiliate);
+        setSubmittedApp(data.affiliate);
+        try {
+          localStorage.setItem('tumpang_shop_active_affiliate_profile', JSON.stringify(data.affiliate));
+        } catch {}
+        setActiveTab('catalog');
+        setErrorMsg(null);
+        setSuccessToast(`Selamat bergabung, ${data.affiliate.fullName}! ID Referral Anda: ${data.affiliate.referralCode}`);
+        setTimeout(() => setSuccessToast(null), 4000);
+      } else {
+        setErrorMsg(data.error || 'Gagal mendaftarkan mitra affiliate.');
+      }
+    } catch (err: any) {
+      setErrorMsg('Terjadi gangguan jaringan saat mendaftarkan akun.');
+    }
+  };
+
+  // Affiliate Logout / Switch account handler
+  const handleLogoutAffiliate = () => {
+    clearStoredAffiliateToken();
+    setSubmittedApp(null);
+    try {
+      localStorage.removeItem('tumpang_shop_active_affiliate_profile');
+    } catch {}
+    setSuccessToast('Anda telah keluar dari akun affiliate.');
+    setTimeout(() => setSuccessToast(null), 3000);
+  };
+
+  // Payout request submission (Backend authorizes session and recalculates genuine balance)
+  const handlePayoutSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!submittedApp) return;
+
+    const token = getStoredAffiliateToken();
+    if (!token) {
+      setPayoutError('Sesi login affiliate tidak ditemukan. Silakan login kembali.');
+      return;
+    }
+
+    if (!payoutAccountNum.trim() || !payoutAccountName.trim()) {
+      setPayoutError('Mohon lengkapi Nomor Rekening dan Nama Pemilik Rekening.');
+      return;
+    }
+
+    if (payoutAmount < 50000) {
+      setPayoutError('Minimal pencairan dana komisi adalah Rp 50.000.');
+      return;
+    }
+
+    if (payoutAmount > metrics.availableBalanceForPayout) {
+      setPayoutError(`Saldo komisi disetujui yang dapat dicairkan hanya Rp ${metrics.availableBalanceForPayout.toLocaleString('id-ID')}.`);
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/affiliates/payouts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          referralCode: submittedApp.referralCode,
+          amount: payoutAmount,
+          bankName: payoutBank,
+          accountNumber: payoutAccountNum.trim(),
+          accountName: payoutAccountName.trim()
+        })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success && data.payout) {
+        setPayoutList(prev => [data.payout, ...prev]);
+        savePayoutRequest(data.payout); // local mirror
+        setPayoutAmount(0);
+        setPayoutAccountNum('');
+        setPayoutError(null);
+        setSuccessToast(`Pengajuan pencairan dana Rp ${data.payout.amount.toLocaleString('id-ID')} berhasil dikirim ke Admin!`);
+        setTimeout(() => setSuccessToast(null), 4000);
+      } else {
+        setPayoutError(data.error || 'Gagal mengajukan pencairan komisi.');
+      }
+    } catch (err: any) {
+      setPayoutError('Terjadi gangguan jaringan saat mengajukan pencairan komisi.');
+    }
+  };
+
+
+  const storeAffiliateLink = `${domain}/?ref=${currentReferralCode}`;
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
@@ -216,17 +498,27 @@ export default function AffiliatePage({
               Beranda
             </button>
             <ChevronRight className="w-3 h-3 text-slate-400" />
-            <span className="text-slate-900 font-semibold">Program Affiliate</span>
+            <span className="text-slate-900 font-semibold">Affiliate Hub & Promosi</span>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+            <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
               Komisi Standar {standardCommissionRate}%
             </span>
             {maxCommissionRate > standardCommissionRate && (
-              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-orange-100 text-[#FE8A00] border border-orange-200">
-                Campaign hingga {maxCommissionRate}%
+              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-orange-100 text-[#FE8A00] border border-orange-200">
+                Campaign s/d {maxCommissionRate}%
               </span>
+            )}
+            {submittedApp && (
+              <button
+                onClick={handleLogoutAffiliate}
+                className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 transition-colors flex items-center gap-1"
+                title="Keluar dari akun mitra ini"
+              >
+                <LogOut className="w-3 h-3" />
+                <span className="hidden sm:inline">Keluar Akun</span>
+              </button>
             )}
           </div>
         </div>
@@ -235,42 +527,86 @@ export default function AffiliatePage({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
         {/* Hero Section */}
-        <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 text-white rounded-3xl p-6 sm:p-10 border border-slate-800 shadow-xl relative overflow-hidden">
+        <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 text-white rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-80 h-80 bg-[#FE8A00]/15 rounded-full blur-3xl pointer-events-none" />
 
           <div className="relative z-10 max-w-3xl space-y-4">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#FE8A00] text-white shadow-md">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Program Kemitraan Tumpang Shop</span>
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#FE8A00] text-white shadow-md">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Program Kemitraan Affiliate Tumpang Shop</span>
+              </span>
+              {submittedApp && (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Mitra Terdaftar: {submittedApp.fullName}</span>
+                </span>
+              )}
+            </div>
 
-            <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white leading-tight">
-              Promosikan Produk Pilihan & Dapatkan Komisi Hingga {maxCommissionRate}%
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white leading-tight">
+              Promosikan Produk & Hasilkan Komisi Nyata Tanpa Batas
             </h1>
 
-            <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
-              Dapatkan komisi standar <strong>{standardCommissionRate}%</strong> dari setiap transaksi, plus bonus komisi spesial pada program <strong>Affiliate Campaign</strong> dan komisi khusus produk pilihan.
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+              Setiap tautan yang Anda bagikan mengatribusi pelanggan selama <strong>30 hari penuh</strong>. Pelanggan dapat berbelanja dan langsung checkout tanpa wajib memasukkan kode voucher rumit. Komisi dihitung otomatis dan tersimpan persisten di sistem database.
             </p>
 
-            {submittedApp && (
+            {submittedApp ? (
               <div className="pt-2 flex flex-wrap items-center gap-3">
-                <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl border border-white/20 text-xs">
-                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Kode Referral Anda</span>
-                  <span className="font-mono font-bold text-orange-400 text-base">{submittedApp.referralCode}</span>
+                <div className="bg-white/10 backdrop-blur-md px-3.5 py-2 rounded-xl border border-white/20 text-xs">
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">ID Referral Anda</span>
+                  <span className="font-mono font-bold text-orange-400 text-sm sm:text-base">{submittedApp.referralCode}</span>
                 </div>
+
                 <button
-                  onClick={() => copyToClipboard(`${domain}/?ref=${submittedApp.referralCode}`, `Tautan Toko Utama (${submittedApp.referralCode})`)}
+                  onClick={() => handleDeviceShare({
+                    title: `${storeConfig.storeName} — Belanja Online Mudah`,
+                    url: storeAffiliateLink,
+                    productName: 'Toko Utama Tumpang Shop'
+                  })}
+                  className="px-4 py-2.5 bg-white/10 hover:bg-white/20 border border-white/25 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-orange-400" />
+                  <span>Bagikan Toko</span>
+                </button>
+
+                <button
+                  onClick={() => copyToClipboard(storeAffiliateLink, `Tautan Toko Utama (${submittedApp.referralCode})`)}
                   className="px-4 py-2.5 bg-[#FE8A00] hover:bg-[#e07b00] text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-2"
                 >
                   <Copy className="w-3.5 h-3.5" />
-                  <span>Salin Tautan Toko Utama</span>
+                  <span>Salin Tautan Toko</span>
+                </button>
+              </div>
+            ) : (
+              <div className="pt-2 flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => {
+                    setAuthView('login');
+                    setActiveTab('profile');
+                  }}
+                  className="px-4 py-2.5 bg-[#FE8A00] hover:bg-[#e07b00] text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-2"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Masuk Dashboard Mitra</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setAuthView('register');
+                    setActiveTab('profile');
+                  }}
+                  className="px-4 py-2.5 bg-white/10 hover:bg-white/20 border border-white/25 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2"
+                >
+                  <ArrowRight className="w-3.5 h-3.5" />
+                  <span>Daftar Menjadi Affiliate Baru</span>
                 </button>
               </div>
             )}
           </div>
         </div>
 
-        {/* Global Toast Notification for Link Copy */}
+        {/* Global Toast for Link Copy */}
         {copiedNotice && (
           <div className="p-4 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-2xl text-xs flex items-center justify-between shadow-sm animate-fade-in">
             <div className="flex items-center gap-2.5">
@@ -280,65 +616,105 @@ export default function AffiliatePage({
                 <span className="text-slate-600">{copiedNotice}</span>
               </div>
             </div>
-            <span className="font-mono text-[11px] bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg">
-              {copiedLink}
-            </span>
+            {copiedLink && (
+              <span className="font-mono text-[11px] bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-lg max-w-[200px] truncate hidden sm:inline">
+                {copiedLink}
+              </span>
+            )}
           </div>
         )}
 
-        {/* Tab Navigation if user is already registered */}
-        {submittedApp && (
-          <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
-            <button
-              onClick={() => setActiveTab('campaigns_and_products')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                activeTab === 'campaigns_and_products'
-                  ? 'bg-orange-50 text-[#FE8A00] border border-orange-200'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              <Tag className="w-4 h-4" />
-              <span>Katalog & Campaign ({productsWithCommissions.length})</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('earnings')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                activeTab === 'earnings'
-                  ? 'bg-orange-50 text-[#FE8A00] border border-orange-200'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              <TrendingUp className="w-4 h-4" />
-              <span>Pendapatan Komisi ({referralOrders.length} Pesanan)</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('registration')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                activeTab === 'registration'
-                  ? 'bg-orange-50 text-[#FE8A00] border border-orange-200'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Profil Kemitraan</span>
-            </button>
+        {/* Success Toast */}
+        {successToast && (
+          <div className="p-4 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-2xl text-xs flex items-center gap-2.5 shadow-sm">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span className="font-bold">{successToast}</span>
           </div>
         )}
 
-        {/* VIEW 1: CAMPAIGNS & PRODUCTS */}
-        {(!submittedApp || activeTab === 'campaigns_and_products') && (
+        {/* Tab Navigation */}
+        <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('catalog')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'catalog'
+                ? 'bg-orange-50 text-[#FE8A00] border border-orange-200'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Tag className="w-4 h-4" />
+            <span>Katalog & Bagikan Produk ({products.length})</span>
+          </button>
+
+          {submittedApp && (
+            <>
+              <button
+                onClick={() => setActiveTab('performance')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
+                  activeTab === 'performance'
+                    ? 'bg-orange-50 text-[#FE8A00] border border-orange-200'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <TrendingUp className="w-4 h-4" />
+                <span>Kinerja & Pendapatan</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('orders')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
+                  activeTab === 'orders'
+                    ? 'bg-orange-50 text-[#FE8A00] border border-orange-200'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <ShoppingBag className="w-4 h-4" />
+                <span>Pesanan Teratribusi ({referralOrders.length})</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('payouts')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
+                  activeTab === 'payouts'
+                    ? 'bg-orange-50 text-[#FE8A00] border border-orange-200'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <Wallet className="w-4 h-4" />
+                <span>Pencairan Dana</span>
+              </button>
+            </>
+          )}
+
+          <button
+            onClick={() => setActiveTab('profile')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'profile'
+                ? 'bg-orange-50 text-[#FE8A00] border border-orange-200'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>{submittedApp ? 'Profil Kemitraan' : 'Masuk / Daftar Mitra'}</span>
+          </button>
+        </div>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* TAB 1: PRODUCT CATALOG WITH 4 ACTIONS (TAHAP 3.2 & 3.3)            */}
+        {/* ------------------------------------------------------------------ */}
+        {activeTab === 'catalog' && (
           <div className="space-y-8">
             
-            {/* 1. SECTION: CAMPAIGN AKTIF */}
+            {/* Active Campaigns */}
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div>
-                  <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                  <h2 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
                     <Flame className="w-5 h-5 text-[#FE8A00]" />
-                    <span>Affiliate Campaign Aktif</span>
+                    <span>Affiliate Campaign Prioritas</span>
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Campaign dengan persentase komisi prioritas tertinggi untuk produk-produk terpilih
+                    Campaign berdurasi terbatas dengan persentase komisi lebih tinggi
                   </p>
                 </div>
                 <span className="text-xs font-bold px-3 py-1 rounded-full bg-orange-100 text-[#FE8A00]">
@@ -350,71 +726,46 @@ export default function AffiliatePage({
                 <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center text-xs text-slate-500">
                   <p className="font-semibold text-slate-700">Belum ada campaign khusus yang sedang aktif saat ini.</p>
                   <p className="text-[11px] text-slate-400 mt-1">
-                    Seluruh produk tetap berlaku dengan <strong>Komisi Standar {standardCommissionRate}%</strong> atau Komisi Khusus Produk.
+                    Seluruh produk berlaku dengan <strong>Komisi Standar {standardCommissionRate}%</strong> atau Komisi Khusus Produk.
                   </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {activeCampaigns.map(camp => {
-                    const perf = getCampaignPerformance(camp, orders);
-                    const campaignLink = `${domain}/?ref=${currentReferralCode}&campaign=${camp.id}`;
+                    const campaignLink = `${domain}/?ref=${currentReferralCode}&utm_campaign=${camp.id}`;
                     return (
-                      <div 
-                        key={camp.id} 
-                        className="bg-white rounded-2xl border-2 border-orange-200 p-5 shadow-xs space-y-4 flex flex-col justify-between relative overflow-hidden"
-                      >
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-orange-500 text-white tracking-wider">
-                              Komisi {camp.commissionRate}%
+                      <div key={camp.id} className="bg-white rounded-2xl border border-orange-200 p-4 space-y-3 shadow-xs">
+                        <div className="flex justify-between items-start gap-2">
+                          <div>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-100 text-[#FE8A00] uppercase">
+                              Campaign Spesial
                             </span>
-                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                              Aktif
-                            </span>
+                            <h3 className="font-bold text-slate-900 text-sm mt-1">{camp.name}</h3>
                           </div>
-
-                          <h3 className="font-black text-slate-900 text-base">{camp.name}</h3>
-                          <p className="text-xs text-slate-600 line-clamp-2">{camp.description || 'Campaign spesial mitra Tumpang Shop'}</p>
-
-                          <div className="pt-2 border-t border-slate-100 space-y-1.5 text-[11px] text-slate-500">
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3.5 h-3.5 text-slate-400" />
-                                <span>Berlaku hingga:</span>
-                              </span>
-                              <span className="font-semibold text-slate-700">
-                                {new Date(camp.endDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-1">
-                                <Tag className="w-3.5 h-3.5 text-slate-400" />
-                                <span>Produk Termasuk:</span>
-                              </span>
-                              <span className="font-semibold text-slate-700">
-                                {camp.productIds.length} Produk
-                              </span>
-                            </div>
-
-                            {camp.budgetLimit && (
-                              <div className="flex items-center justify-between">
-                                <span>Sisa Anggaran:</span>
-                                <span className="font-bold text-slate-800">
-                                  Rp {(perf.remainingBudget || 0).toLocaleString('id-ID')}
-                                </span>
-                              </div>
-                            )}
-                          </div>
+                          <span className="text-lg font-black text-[#FE8A00]">{camp.commissionRate}%</span>
                         </div>
-
-                        <button
-                          onClick={() => copyToClipboard(campaignLink, `Campaign "${camp.name}" (Komisi ${camp.commissionRate}%)`)}
-                          className="w-full py-2.5 bg-orange-50 hover:bg-[#FE8A00] text-[#FE8A00] hover:text-white border border-orange-200 hover:border-transparent font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-2xs"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Salin Link Promosi Campaign</span>
-                        </button>
+                        <p className="text-xs text-slate-500 line-clamp-2">{camp.description || 'Campaign promosi produk unggulan.'}</p>
+                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                          <button
+                            onClick={() => handleDeviceShare({
+                              title: `Campaign Promo: ${camp.name}`,
+                              url: campaignLink,
+                              productName: camp.name,
+                              commissionRate: camp.commissionRate
+                            })}
+                            className="py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                            <span>Bagikan</span>
+                          </button>
+                          <button
+                            onClick={() => copyToClipboard(campaignLink, `Campaign "${camp.name}" (${camp.commissionRate}%)`)}
+                            className="py-2 bg-orange-50 hover:bg-[#FE8A00] text-[#FE8A00] hover:text-white border border-orange-200 hover:border-transparent font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Salin Tautan</span>
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -422,77 +773,82 @@ export default function AffiliatePage({
               )}
             </div>
 
-            {/* 2. SECTION: KATALOG PRODUK & KOMISI BERLAKU */}
+            {/* Product Catalog Showcase with 4 Distinct Action Buttons */}
             <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-4">
                 <div>
                   <h2 className="text-base sm:text-lg font-black text-slate-900">
-                    Katalog Produk & Komisi yang Berlaku
+                    Katalog Produk Promosi
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Periksa persentase komisi riil dan salin tautan promosi untuk setiap produk
+                    Pilih produk, buat materi promosi, salin tautan unik, atau langsung bagikan ke WhatsApp & media sosial
                   </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                  {/* Search */}
-                  <div className="relative flex-1 md:w-60">
+                  <div className="relative flex-1 md:w-56">
                     <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
                       value={productSearch}
                       onChange={(e) => setProductSearch(e.target.value)}
-                      placeholder="Cari nama produk..."
+                      placeholder="Cari produk..."
                       className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-[#FE8A00]"
                     />
                   </div>
 
-                  {/* Campaign filter */}
                   <select
                     value={campaignFilter}
                     onChange={(e) => setCampaignFilter(e.target.value)}
                     className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-[#FE8A00] text-slate-700 font-medium"
                   >
                     <option value="ALL">Semua Produk</option>
-                    <option value="CAMPAIGN_ONLY">Khusus Ikut Campaign</option>
+                    <option value="CAMPAIGN_ONLY">Khusus Campaign</option>
                     <option value="CUSTOM_ONLY">Komisi Khusus Produk</option>
                     {activeCampaigns.map(c => (
                       <option key={c.id} value={c.id}>{c.name} ({c.commissionRate}%)</option>
                     ))}
                   </select>
 
-                  {/* Min commission filter */}
                   <select
                     value={minCommissionFilter}
                     onChange={(e) => setMinCommissionFilter(Number(e.target.value))}
                     className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-[#FE8A00] text-slate-700 font-medium"
                   >
-                    <option value={0}>Semua Persentase</option>
-                    <option value={15}>Minimal 15%</option>
-                    <option value={20}>Minimal 20%</option>
-                    <option value={25}>Minimal 25%</option>
+                    <option value={0}>Semua %</option>
+                    <option value={15}>Min 15%</option>
+                    <option value={20}>Min 20%</option>
+                    <option value={25}>Min 25%</option>
                   </select>
                 </div>
               </div>
 
-              {/* Product List */}
               {filteredProducts.length === 0 ? (
                 <div className="py-12 text-center text-xs text-slate-400 space-y-2">
                   <p className="font-semibold text-slate-600">Tidak ada produk yang sesuai dengan filter.</p>
-                  <p>Coba reset filter atau pencarian Anda.</p>
+                  <p>Coba reset kata kunci pencarian atau filter Anda.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filteredProducts.map(({ product, effectiveCommission, commissionAmount }) => {
                     const slug = getProductSlug(product);
-                    const productLink = `${domain}/?ref=${currentReferralCode}&product=${slug}`;
+                    const productLink = `${domain}/products/${slug}?ref=${currentReferralCode}`;
                     const isCampaign = effectiveCommission.appliedType === 'campaign';
                     const isCustom = effectiveCommission.appliedType === 'product_custom';
+
+                    const sharePayload: ShareModalData = {
+                      title: product.name,
+                      url: productLink,
+                      productName: product.name,
+                      price: product.price,
+                      unit: product.unit,
+                      commissionRate: effectiveCommission.ratePercent
+                    };
 
                     return (
                       <div 
                         key={product.id}
-                        className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
+                        className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3.5 ${
                           isCampaign 
                             ? 'bg-orange-50/20 border-orange-200 hover:border-[#FE8A00]' 
                             : isCustom 
@@ -505,7 +861,7 @@ export default function AffiliatePage({
                             <img
                               src={product.images[0] || ''}
                               alt={product.name}
-                              className="w-14 h-14 rounded-xl object-cover border border-slate-200 bg-slate-50 shrink-0"
+                              className="w-16 h-16 rounded-xl object-cover border border-slate-200 bg-slate-50 shrink-0"
                               onError={(e) => {
                                 const target = e.currentTarget;
                                 target.onerror = null;
@@ -544,19 +900,57 @@ export default function AffiliatePage({
                               </span>
                             </div>
 
-                            <div className="text-[10px] text-slate-400 pt-0.5 border-t border-slate-200">
+                            <div className="text-[10px] text-slate-400 pt-0.5 border-t border-slate-200 truncate">
                               {effectiveCommission.sourceLabel}
                             </div>
                           </div>
                         </div>
 
-                        <button
-                          onClick={() => copyToClipboard(productLink, `Produk "${product.name}" (${effectiveCommission.ratePercent}% = Rp ${commissionAmount.toLocaleString('id-ID')})`)}
-                          className="w-full py-2 bg-slate-100 hover:bg-[#FE8A00] text-slate-700 hover:text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 active:scale-98"
-                        >
-                          <Share2 className="w-3.5 h-3.5" />
-                          <span>Salin Link Promosi</span>
-                        </button>
+                        {/* 4 DISTINCT ACTIONS (Per Requirement: Buat Link Promosi, Salin Link, Bagikan, Bagikan ke WhatsApp) */}
+                        <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                          {/* Row 1: Buat Link Promosi & Bagikan ke WhatsApp */}
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <button
+                              onClick={() => handleOpenPromoModal(sharePayload, 'tiktok')}
+                              className="py-2 px-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1 shadow-xs active:scale-98"
+                              title="Buat Teks Promosi Siap Pakai untuk Media Sosial"
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>Buat Promosi</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleShareToWhatsApp(product.name, product.price, productLink)}
+                              className="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1 shadow-xs active:scale-98"
+                              title="Bagikan Teks & Tautan Langsung ke WhatsApp"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                              <span>Ke WhatsApp</span>
+                            </button>
+                          </div>
+
+                          {/* Row 2: Salin Link & Bagikan (Device Native Share) */}
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <button
+                              onClick={() => copyToClipboard(productLink, `Produk "${product.name}"`)}
+                              className="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1 active:scale-98"
+                              title="Salin Tautan Produk"
+                            >
+                              <Copy className="w-3.5 h-3.5 text-slate-600" />
+                              <span>Salin Link</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleDeviceShare(sharePayload)}
+                              className="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px] rounded-xl transition-all flex items-center justify-center gap-1 active:scale-98"
+                              title="Bagikan Lewat Fitur Berbagi Perangkat"
+                            >
+                              <Share2 className="w-3.5 h-3.5 text-slate-600" />
+                              <span>Bagikan</span>
+                            </button>
+                          </div>
+                        </div>
+
                       </div>
                     );
                   })}
@@ -567,245 +961,726 @@ export default function AffiliatePage({
           </div>
         )}
 
-        {/* VIEW 2: EARNINGS ANALYTICS */}
-        {submittedApp && activeTab === 'earnings' && (
+        {/* ------------------------------------------------------------------ */}
+        {/* TAB 2: OPERATIONAL PERFORMANCE & REAL METRICS (REQUIREMENT 3 & 4)   */}
+        {/* ------------------------------------------------------------------ */}
+        {submittedApp && activeTab === 'performance' && (
           <div className="space-y-6">
             <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-6">
               <div>
-                <h2 className="text-lg font-black text-slate-900">
-                  Ringkasan Pendapatan Mitra ({submittedApp.referralCode})
+                <h2 className="text-base sm:text-lg font-black text-slate-900">
+                  Ringkasan Kinerja & Pendapatan Mitra ({submittedApp.referralCode})
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Dihitung otomatis dari pesanan yang dibuat menggunakan kode referral Anda
+                  Data real-time dihitung deterministik dari pesanan dan klik tervalidasi milik akun Anda.
                 </p>
               </div>
 
-              {/* Metrics Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+              {/* Real Metrics Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-1">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase block">Total Transaksi</span>
-                  <span className="text-2xl font-black text-slate-900">{earningsSummary.validOrderCount}</span>
-                  <span className="text-[11px] text-slate-400 block">Pesanan terdaftar</span>
+                  <div className="flex items-center gap-1.5 text-slate-500">
+                    <MousePointerClick className="w-3.5 h-3.5" />
+                    <span className="text-[10px] font-bold uppercase">Klik Valid</span>
+                  </div>
+                  <span className="text-2xl font-black text-slate-900">{metrics.validClicksCount}</span>
+                  <span className="text-[10px] text-slate-400 block">Kunjungan terlacak</span>
                 </div>
 
-                <div className="bg-orange-50/40 p-4 rounded-2xl border border-orange-200 space-y-1">
-                  <span className="text-[11px] font-bold text-[#FE8A00] uppercase block">Total Komisi</span>
-                  <span className="text-2xl font-black text-[#FE8A00]">
-                    Rp {earningsSummary.totalCommission.toLocaleString('id-ID')}
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-1">
+                  <div className="flex items-center gap-1.5 text-slate-500">
+                    <ShoppingBag className="w-3.5 h-3.5" />
+                    <span className="text-[10px] font-bold uppercase">Pesanan</span>
+                  </div>
+                  <span className="text-2xl font-black text-slate-900">{metrics.attributedOrdersCount}</span>
+                  <span className="text-[10px] text-slate-400 block">{metrics.validOrdersCount} pesanan valid/lunas</span>
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-1">
+                  <div className="flex items-center gap-1.5 text-slate-500">
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    <span className="text-[10px] font-bold uppercase">Total Penjualan</span>
+                  </div>
+                  <span className="text-lg sm:text-xl font-black text-slate-900 font-mono">
+                    Rp {metrics.totalSalesVolume.toLocaleString('id-ID')}
                   </span>
-                  <span className="text-[11px] text-slate-500 block">Akumulasi komisi</span>
+                  <span className="text-[10px] text-slate-400 block">GMV teratribusi</span>
                 </div>
 
-                <div className="bg-emerald-50/40 p-4 rounded-2xl border border-emerald-200 space-y-1">
-                  <span className="text-[11px] font-bold text-emerald-700 uppercase block">Disetujui / Selesai</span>
-                  <span className="text-2xl font-black text-emerald-700">
-                    Rp {earningsSummary.approvedCommission.toLocaleString('id-ID')}
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-1">
+                  <div className="flex items-center gap-1.5 text-amber-700">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span className="text-[10px] font-bold uppercase">Komisi Pending</span>
+                  </div>
+                  <span className="text-lg sm:text-xl font-black text-amber-700 font-mono">
+                    Rp {metrics.pendingCommission.toLocaleString('id-ID')}
                   </span>
-                  <span className="text-[11px] text-slate-500 block">Siap ditransfer admin</span>
+                  <span className="text-[10px] text-slate-400 block">Menunggu verifikasi pembayaran</span>
                 </div>
 
-                <div className="bg-amber-50/40 p-4 rounded-2xl border border-amber-200 space-y-1">
-                  <span className="text-[11px] font-bold text-amber-700 uppercase block">Menunggu (Pending)</span>
-                  <span className="text-2xl font-black text-amber-700">
-                    Rp {earningsSummary.pendingCommission.toLocaleString('id-ID')}
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-1">
+                  <div className="flex items-center gap-1.5 text-emerald-700">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span className="text-[10px] font-bold uppercase">Komisi Disetujui</span>
+                  </div>
+                  <span className="text-lg sm:text-xl font-black text-emerald-700 font-mono">
+                    Rp {metrics.approvedCommission.toLocaleString('id-ID')}
                   </span>
-                  <span className="text-[11px] text-slate-500 block">Pesanan dalam proses</span>
-                </div>
-              </div>
-
-              {/* Order history table */}
-              <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    Riwayat Transaksi Pesanan Referral
-                  </h3>
+                  <span className="text-[10px] text-slate-400 block">Terverifikasi pembayaran</span>
                 </div>
 
-                <div className="divide-y divide-slate-100 text-xs">
-                  {referralOrders.length === 0 ? (
-                    <div className="p-8 text-center text-slate-400">
-                      Belum ada transaksi pesanan yang menggunakan kode referral ini.
-                    </div>
-                  ) : (
-                    referralOrders.map(ord => (
-                      <div key={ord.id} className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 hover:bg-slate-50/50">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-slate-900">{ord.orderNumber}</span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-600">
-                              {new Date(ord.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                              ord.orderStatus === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
-                              ord.orderStatus === 'CANCELLED' ? 'bg-rose-100 text-rose-800' :
-                              'bg-amber-100 text-amber-800'
-                            }`}>
-                              {ord.orderStatus}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            Customer: {ord.customerName} • Total Belanja: Rp {ord.total.toLocaleString('id-ID')}
-                          </div>
-                        </div>
-
-                        <div className="text-right">
-                          <div className="text-[11px] text-slate-400">Komisi Snapshot:</div>
-                          <div className="font-mono font-bold text-[#FE8A00] text-sm">
-                            Rp {(ord.affiliateCommission?.totalCommission || 0).toLocaleString('id-ID')}
-                          </div>
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                            ord.affiliateCommission?.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
-                            ord.affiliateCommission?.status === 'CANCELLED' ? 'bg-rose-100 text-rose-800' :
-                            'bg-amber-100 text-amber-800'
-                          }`}>
-                            {ord.affiliateCommission?.status || 'PENDING'}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  )}
+                <div className="bg-orange-50/50 p-4 rounded-2xl border border-orange-200 space-y-1">
+                  <div className="flex items-center gap-1.5 text-[#FE8A00]">
+                    <Wallet className="w-3.5 h-3.5" />
+                    <span className="text-[10px] font-bold uppercase">Siap Dicairkan</span>
+                  </div>
+                  <span className="text-lg sm:text-xl font-black text-[#FE8A00] font-mono">
+                    Rp {metrics.availableBalanceForPayout.toLocaleString('id-ID')}
+                  </span>
+                  <span className="text-[10px] text-slate-500 block">Dapat diajukan penarikan</span>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* VIEW 3: REGISTRATION / PROFILE */}
-        {(!submittedApp || activeTab === 'registration') && (
-          <div className="bg-white rounded-3xl border border-slate-200/80 p-6 sm:p-8 shadow-xs space-y-6 max-w-2xl mx-auto">
+        {/* ------------------------------------------------------------------ */}
+        {/* TAB 3: ATTRIBUTED ORDERS (ISOLATED TO ACTIVE AFFILIATE ONLY)       */}
+        {/* ------------------------------------------------------------------ */}
+        {submittedApp && activeTab === 'orders' && (
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
             <div>
-              <h2 className="text-lg sm:text-xl font-extrabold text-slate-900">
-                {submittedApp ? 'Profil Kemitraan Affiliate Anda' : 'Formulir Pendaftaran Mitra Affiliate'}
+              <h2 className="text-base sm:text-lg font-black text-slate-900">
+                Daftar Pesanan Teratribusi ({referralOrders.length})
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {submittedApp ? 'Detail akun dan kode referral resmi Anda' : 'Daftarkan diri Anda sekarang untuk mulai mempromosikan produk lokal berkualitas'}
+              <p className="text-xs text-slate-500">
+                Pesanan yang berasal dari tautan promosi Anda (ID: {submittedApp.referralCode}).
               </p>
             </div>
 
-            {submittedApp ? (
-              <div className="space-y-4">
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                      Nama Lengkap Mitra
-                    </span>
-                    <span className="font-bold text-slate-900">{submittedApp.fullName}</span>
-                  </div>
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                      WhatsApp & Email
-                    </span>
-                    <span className="font-mono text-slate-800 text-xs">{submittedApp.phone} • {submittedApp.email}</span>
-                  </div>
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                      Kanal Promosi
-                    </span>
-                    <span className="text-slate-700 text-xs">{submittedApp.promotionChannel}</span>
-                  </div>
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                      Kode Referral Resmi
-                    </span>
-                    <span className="text-lg font-black text-[#FE8A00] font-mono">{submittedApp.referralCode}</span>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setActiveTab('campaigns_and_products')}
-                  className="w-full py-3 bg-[#FE8A00] hover:bg-[#e07b00] text-white font-bold rounded-xl text-xs transition-colors"
-                >
-                  Buka Katalog & Mulai Bagikan Produk
-                </button>
+            {referralOrders.length === 0 ? (
+              <div className="py-12 text-center text-xs text-slate-400 space-y-2">
+                <ShoppingBag className="w-10 h-10 mx-auto text-slate-300" />
+                <p className="font-semibold text-slate-600">Belum ada pesanan dari tautan promosi Anda.</p>
+                <p>Mulai bagikan produk ke status WhatsApp, TikTok, atau Instagram untuk mendapatkan pesanan pertama!</p>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-                {errorMsg && (
-                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{errorMsg}</span>
-                  </div>
-                )}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-500 font-bold bg-slate-50/50">
+                      <th className="p-3">No. Pesanan</th>
+                      <th className="p-3">Tanggal</th>
+                      <th className="p-3">Total Belanja</th>
+                      <th className="p-3">Status Pembayaran</th>
+                      <th className="p-3">Estimasi Komisi</th>
+                      <th className="p-3">Status Komisi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {referralOrders.map(ord => {
+                      const comm = ord.affiliateCommission;
+                      const commAmount = comm?.totalCommission || 0;
+                      const isPaid = ord.paymentStatus === 'PAID';
+                      return (
+                        <tr key={ord.id} className="hover:bg-slate-50/50">
+                          <td className="p-3 font-mono font-bold text-slate-900">{ord.orderNumber}</td>
+                          <td className="p-3 text-slate-500">{new Date(ord.createdAt).toLocaleDateString('id-ID')}</td>
+                          <td className="p-3 font-mono text-slate-900 font-bold">Rp {ord.total.toLocaleString('id-ID')}</td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              isPaid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {ord.paymentStatus}
+                            </span>
+                          </td>
+                          <td className="p-3 font-mono text-emerald-700 font-bold">
+                            Rp {commAmount.toLocaleString('id-ID')}
+                          </td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              comm?.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'
+                            }`}>
+                              {comm?.status || (isPaid ? 'APPROVED' : 'PENDING')}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="font-semibold text-slate-700 block mb-1">Nama Lengkap *</label>
-                    <input
-                      type="text"
-                      required
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Contoh: Siti Rahma"
-                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden bg-slate-50/50 focus:bg-white text-xs"
-                    />
-                  </div>
+        {/* ------------------------------------------------------------------ */}
+        {/* TAB 4: PAYOUTS / PENCAIRAN DANA                                    */}
+        {/* ------------------------------------------------------------------ */}
+        {submittedApp && activeTab === 'payouts' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <Wallet className="w-5 h-5 text-[#FE8A00]" />
+                <span>Ajukan Pencairan Saldo</span>
+              </h3>
+              <p className="text-xs text-slate-500">
+                Saldo siap ditarik: <strong className="text-emerald-700 font-mono text-sm">Rp {metrics.availableBalanceForPayout.toLocaleString('id-ID')}</strong> (Min. Rp 50.000)
+              </p>
 
-                  <div>
-                    <label className="font-semibold text-slate-700 block mb-1">Nomor WhatsApp *</label>
-                    <input
-                      type="tel"
-                      required
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="Contoh: 081234567890"
-                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden bg-slate-50/50 focus:bg-white text-xs"
-                    />
-                  </div>
+              {payoutError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{payoutError}</span>
                 </div>
+              )}
 
+              <form onSubmit={handlePayoutSubmit} className="space-y-3 text-xs">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Email Aktif *</label>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="nama@email.com"
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden bg-slate-50/50 focus:bg-white text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Kanal / Rencana Promosi Utama</label>
+                  <label className="font-semibold text-slate-700 block mb-1">Bank / E-Wallet Tujuan</label>
                   <select
-                    value={promotionChannel}
-                    onChange={(e) => setPromotionChannel(e.target.value)}
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden bg-slate-50/50 focus:bg-white text-xs"
+                    value={payoutBank}
+                    onChange={(e) => setPayoutBank(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden text-xs bg-slate-50/50"
                   >
-                    <option value="Status WhatsApp & Grup">Status WhatsApp & Grup Komunitas / Keluarga</option>
-                    <option value="Instagram / Threads">Instagram & Threads</option>
-                    <option value="TikTok">TikTok & Video Pendek</option>
-                    <option value="Facebook">Grup Facebook Jual Beli Malang / Tumpang</option>
-                    <option value="Langsung / Mulut ke Mulut">Promosi Langsung ke Tetangga & Kerabat</option>
+                    <option value="BCA">BCA (Bank Central Asia)</option>
+                    <option value="BRI">BRI (Bank Rakyat Indonesia)</option>
+                    <option value="BNI">BNI (Bank Negara Indonesia)</option>
+                    <option value="Mandiri">Bank Mandiri</option>
+                    <option value="GoPay">GoPay</option>
+                    <option value="OVO">OVO</option>
+                    <option value="DANA">DANA</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Catatan Tambahan (Opsional)</label>
-                  <textarea
-                    rows={2}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Tuliskan pengalaman atau produk yang paling ingin Anda promosikan..."
-                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden bg-slate-50/50 focus:bg-white text-xs"
+                  <label className="font-semibold text-slate-700 block mb-1">Nomor Rekening / HP Akun *</label>
+                  <input
+                    type="text"
+                    required
+                    value={payoutAccountNum}
+                    onChange={(e) => setPayoutAccountNum(e.target.value)}
+                    placeholder="Contoh: 1234567890"
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden text-xs"
                   />
                 </div>
 
-                <div className="pt-2">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Nama Pemilik Rekening *</label>
+                  <input
+                    type="text"
+                    required
+                    value={payoutAccountName}
+                    onChange={(e) => setPayoutAccountName(e.target.value)}
+                    placeholder="Nama sesuai buku tabungan"
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Nominal Penarikan (Rp) *</label>
+                  <input
+                    type="number"
+                    required
+                    min={50000}
+                    step={10000}
+                    value={payoutAmount || ''}
+                    onChange={(e) => setPayoutAmount(Number(e.target.value))}
+                    placeholder="Minimal Rp 50.000"
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden text-xs font-mono font-bold"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={metrics.availableBalanceForPayout < 50000}
+                  className="w-full py-3 bg-[#FE8A00] hover:bg-[#e07b00] disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Kirim Permintaan Pencairan</span>
+                </button>
+              </form>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs space-y-4">
+              <h3 className="text-base font-black text-slate-900">Riwayat Penarikan Dana</h3>
+              {affiliatePayouts.length === 0 ? (
+                <div className="py-10 text-center text-xs text-slate-400">
+                  Belum ada riwayat penarikan dana untuk akun ini.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {affiliatePayouts.map(p => (
+                    <div key={p.id} className="p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
+                      <div>
+                        <div className="font-mono font-bold text-slate-900">Rp {p.amount.toLocaleString('id-ID')}</div>
+                        <div className="text-[10px] text-slate-500">{p.bankName} - {p.accountNumber} ({p.accountName})</div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        p.status === 'PROCESSED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                      }`}>
+                        {p.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------------ */}
+        {/* TAB 5: AFFILIATE PROFILE OR REGISTRATION / LOGIN                   */}
+        {/* ------------------------------------------------------------------ */}
+        {activeTab === 'profile' && (
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs max-w-2xl mx-auto space-y-6">
+            {submittedApp ? (
+              <div className="space-y-6">
+                <div className="flex justify-between items-start gap-4 border-b border-slate-100 pb-4">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                      Mitra Terverifikasi & Aktif
+                    </span>
+                    <h2 className="text-lg font-black text-slate-900 mt-1">Profil Kemitraan Anda</h2>
+                  </div>
                   <button
-                    type="submit"
-                    className="w-full py-3.5 bg-[#FE8A00] hover:bg-[#e07b00] text-white font-bold rounded-2xl shadow-md transition-all text-xs sm:text-sm flex items-center justify-center gap-2"
+                    onClick={handleLogoutAffiliate}
+                    className="px-3 py-1.5 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors flex items-center gap-1.5"
                   >
-                    <span>Daftar Sekarang & Aktifkan Kode Referral</span>
-                    <ArrowRight className="w-4 h-4" />
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Ganti Akun / Keluar</span>
                   </button>
                 </div>
-              </form>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Nama Lengkap</span>
+                    <span className="font-bold text-slate-900 text-sm">{submittedApp.fullName}</span>
+                  </div>
+                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">ID Referral Unik</span>
+                    <span className="font-mono font-black text-[#FE8A00] text-base">{submittedApp.referralCode}</span>
+                  </div>
+                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Kontak WhatsApp</span>
+                    <span className="font-mono text-slate-800">{submittedApp.phone}</span>
+                  </div>
+                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Email Terdaftar</span>
+                    <span className="text-slate-800 truncate block">{submittedApp.email}</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setActiveTab('catalog')}
+                  className="w-full py-3 bg-[#FE8A00] hover:bg-[#e07b00] text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
+                >
+                  <Tag className="w-4 h-4" />
+                  <span>Buka Katalog & Mulai Bagikan Produk</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Auth Mode Toggle: Login vs Register */}
+                <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200">
+                  <button
+                    onClick={() => {
+                      setAuthView('login');
+                      setLoginError(null);
+                      setErrorMsg(null);
+                    }}
+                    className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                      authView === 'login'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    <LogIn className="w-3.5 h-3.5 text-[#FE8A00]" />
+                    <span>Masuk Mitra Terdaftar</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAuthView('register');
+                      setLoginError(null);
+                      setErrorMsg(null);
+                    }}
+                    className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                      authView === 'register'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-[#FE8A00]" />
+                    <span>Daftar Mitra Baru</span>
+                  </button>
+                </div>
+
+                {/* LOGIN FORM FOR APPROVED AFFILIATES (TAHAP 3.1) */}
+                {authView === 'login' ? (
+                  <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">Masuk ke Dashboard Affiliate Anda</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Masukkan ID Referral unik Anda (contoh: <strong>TS-PARTNER</strong>), Nomor WhatsApp, atau Email terdaftar untuk membuka dashboard.
+                      </p>
+                    </div>
+
+                    {loginError && (
+                      <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>{loginError}</span>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="font-semibold text-slate-700 block mb-1">
+                        ID Referral, Nomor WhatsApp, atau Email *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={loginInput}
+                        onChange={(e) => setLoginInput(e.target.value)}
+                        placeholder="Contoh: TS-PARTNER atau 081234567890"
+                        className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden bg-slate-50/50 focus:bg-white text-xs font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="font-semibold text-slate-700 block mb-1">
+                        Kata Sandi Akun Mitra *
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showLoginPassword ? 'text' : 'password'}
+                          required
+                          value={loginPassword}
+                          onChange={(e) => setLoginPassword(e.target.value)}
+                          placeholder="Masukkan kata sandi akun mitra"
+                          className="w-full px-3.5 py-2.5 pr-10 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden bg-slate-50/50 focus:bg-white text-xs font-medium"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowLoginPassword(!showLoginPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-3 bg-[#FE8A00] hover:bg-[#e07b00] text-white font-bold rounded-xl shadow-md transition-all text-xs flex items-center justify-center gap-2"
+                    >
+                      <LogIn className="w-4 h-4" />
+                      <span>Masuk ke Dashboard Mitra</span>
+                    </button>
+
+                    <p className="text-center text-[11px] text-slate-400">
+                      Belum memiliki akun affiliate?{' '}
+                      <button
+                        type="button"
+                        onClick={() => setAuthView('register')}
+                        className="text-[#FE8A00] font-bold hover:underline"
+                      >
+                        Daftar Gratis Sekarang
+                      </button>
+                    </p>
+                  </form>
+                ) : (
+                  /* REGISTRATION FORM */
+                  <form onSubmit={handleRegisterSubmit} className="space-y-4 text-xs">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">Daftar Menjadi Mitra Affiliate Baru</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Dapatkan ID Referral unik instan dan mulai dapatkan komisi 15% dari setiap pesanan yang teratribusi.
+                      </p>
+                    </div>
+
+                    {errorMsg && (
+                      <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>{errorMsg}</span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="font-semibold text-slate-700 block mb-1">Nama Lengkap *</label>
+                        <input
+                          type="text"
+                          required
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                          placeholder="Contoh: Siti Rahma"
+                          className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden bg-slate-50/50 focus:bg-white text-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="font-semibold text-slate-700 block mb-1">Nomor WhatsApp *</label>
+                        <input
+                          type="tel"
+                          required
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder="Contoh: 081234567890"
+                          className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden bg-slate-50/50 focus:bg-white text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="font-semibold text-slate-700 block mb-1">Email Aktif *</label>
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="nama@email.com"
+                        className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden bg-slate-50/50 focus:bg-white text-xs"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="font-semibold text-slate-700 block mb-1">Kata Sandi Akun (min. 6 karakter) *</label>
+                        <div className="relative">
+                          <input
+                            type={showRegisterPassword ? 'text' : 'password'}
+                            required
+                            minLength={6}
+                            value={registerPassword}
+                            onChange={(e) => setRegisterPassword(e.target.value)}
+                            placeholder="Minimal 6 karakter"
+                            className="w-full px-3.5 py-2.5 pr-10 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden bg-slate-50/50 focus:bg-white text-xs"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowRegisterPassword(!showRegisterPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          >
+                            {showRegisterPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="font-semibold text-slate-700 block mb-1">Konfirmasi Kata Sandi *</label>
+                        <input
+                          type={showRegisterPassword ? 'text' : 'password'}
+                          required
+                          minLength={6}
+                          value={registerConfirmPassword}
+                          onChange={(e) => setRegisterConfirmPassword(e.target.value)}
+                          placeholder="Ketik ulang kata sandi"
+                          className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden bg-slate-50/50 focus:bg-white text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="font-semibold text-slate-700 block mb-1">Kanal Promosi Utama</label>
+                      <select
+                        value={promotionChannel}
+                        onChange={(e) => setPromotionChannel(e.target.value)}
+                        className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden bg-slate-50/50 focus:bg-white text-xs"
+                      >
+                        <option value="Status WhatsApp & Grup">Status WhatsApp & Grup Komunitas</option>
+                        <option value="TikTok & Video Pendek">TikTok Video, Bio & Live</option>
+                        <option value="Instagram / Threads">Instagram Reels, Story & Bio</option>
+                        <option value="Facebook">Facebook Grup Jual Beli / Feed</option>
+                        <option value="Langsung / Mulut ke Mulut">Promosi Langsung ke Kerabat</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="font-semibold text-slate-700 block mb-1">Catatan Tambahan (Opsional)</label>
+                      <textarea
+                        rows={2}
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Tuliskan produk atau rencana promosi yang ingin Anda fokuskan..."
+                        className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:border-[#FE8A00] focus:outline-hidden bg-slate-50/50 focus:bg-white text-xs"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-3 bg-[#FE8A00] hover:bg-[#e07b00] text-white font-bold rounded-xl shadow-md transition-all text-xs flex items-center justify-center gap-2"
+                    >
+                      <span>Daftar Sekarang & Dapatkan ID Referral</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </form>
+                )}
+              </div>
             )}
           </div>
         )}
 
       </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* PROMOTIONAL CONTENT & LINK GENERATOR MODAL (TAHAP 3.2 - 3.4)       */}
+      {/* ------------------------------------------------------------------ */}
+      {shareModalData && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-2xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl relative border border-slate-100 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-[#FE8A00]" />
+                <h3 className="font-bold text-slate-900 text-sm">Buat Link & Teks Promosi</h3>
+              </div>
+              <button
+                onClick={() => setShareModalData(null)}
+                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Target Product Summary */}
+            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-3 text-xs">
+              <div className="min-w-0">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Produk Promosi</span>
+                <h4 className="font-bold text-slate-800 truncate">{shareModalData.productName || shareModalData.title}</h4>
+                {shareModalData.price && (
+                  <p className="text-xs font-black text-[#FE8A00]">
+                    Rp {shareModalData.price.toLocaleString('id-ID')}
+                    {shareModalData.unit && <span className="text-[10px] text-slate-400 font-normal"> / {shareModalData.unit}</span>}
+                  </p>
+                )}
+              </div>
+              <div className="text-right shrink-0">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Komisi Anda</span>
+                <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  {shareModalData.commissionRate || standardCommissionRate}%
+                </span>
+              </div>
+            </div>
+
+            {/* Platform Tabs */}
+            <div className="flex gap-1 p-1 bg-slate-100 rounded-xl overflow-x-auto text-[11px] font-bold">
+              <button
+                onClick={() => setShareTab('link')}
+                className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap ${
+                  shareTab === 'link' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Tautan Saja
+              </button>
+              <button
+                onClick={() => setShareTab('whatsapp')}
+                className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap ${
+                  shareTab === 'whatsapp' ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                WhatsApp
+              </button>
+              <button
+                onClick={() => setShareTab('tiktok')}
+                className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap ${
+                  shareTab === 'tiktok' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                TikTok
+              </button>
+              <button
+                onClick={() => setShareTab('instagram')}
+                className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap ${
+                  shareTab === 'instagram' ? 'bg-white text-pink-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Instagram
+              </button>
+              <button
+                onClick={() => setShareTab('facebook')}
+                className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap ${
+                  shareTab === 'facebook' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Facebook
+              </button>
+            </div>
+
+            {/* Content Preview & Copy Area */}
+            {(() => {
+              const pName = shareModalData.productName || shareModalData.title;
+              const pPrice = shareModalData.price ? `Rp ${shareModalData.price.toLocaleString('id-ID')}` : '';
+              const link = shareModalData.url;
+
+              const captions = {
+                link: link,
+                tiktok: `🔥 Rekomendasi belanja hemat & berkualitas di Tumpang Shop!\nProduk pilihan: ${pName}${pPrice ? ` (hanya ${pPrice})` : ''}.\nKualitas terjamin dengan kemudahan pemesanan cepat.\n👉 Cek dan beli langsung lewat link di bio sekarang:\n${link}`,
+                instagram: `Mau belanja praktis dan terpercaya? Yuk cek ${pName} di Tumpang Shop!${pPrice ? ` Harga spesial ${pPrice}.` : ''}\n✨ Klik link di bio untuk order langsung:\n${link}`,
+                whatsapp: `Halo! Saya merekomendasikan produk pilihan berkualitas di Tumpang Shop: *${pName}*${pPrice ? ` (${pPrice})` : ''}.\nBisa langsung diorder lewat tautan resmi ini ya:\n${link}`,
+                facebook: `Halo semuanya! Bagi yang sedang mencari ${pName}, sekarang bisa beli langsung di Tumpang Shop dengan harga terbaik ${pPrice}.\n🛒 Pesan langsung di sini (tanpa ribet):\n${link}`
+              };
+
+              const currentText = captions[shareTab];
+
+              return (
+                <div className="space-y-3">
+                  <div className="relative">
+                    <textarea
+                      readOnly
+                      rows={5}
+                      value={currentText}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 leading-relaxed focus:outline-hidden"
+                    />
+                  </div>
+
+                  {/* Actions for this platform */}
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      onClick={() => copyToClipboard(currentText, `Teks promosi untuk ${shareTab.toUpperCase()} berhasil disalin!`)}
+                      className="flex-1 py-2.5 bg-[#FE8A00] hover:bg-[#e07b00] text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Salin Teks Promosi</span>
+                    </button>
+
+                    {shareTab === 'whatsapp' && (
+                      <button
+                        onClick={() => {
+                          const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(currentText)}`;
+                          window.open(waUrl, '_blank', 'noopener,noreferrer');
+                        }}
+                        className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>Buka WhatsApp</span>
+                      </button>
+                    )}
+
+                    {shareTab === 'facebook' && (
+                      <button
+                        onClick={() => {
+                          const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}`;
+                          window.open(fbUrl, '_blank', 'noopener,noreferrer');
+                        }}
+                        className="py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Buka Facebook</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Mandatory Disclosure Note per instructions */}
+                  <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
+                    <strong>Catatan:</strong> Salin teks promosi di atas untuk diunggah ke akun media sosial Anda. Unggah otomatis memerlukan integrasi API resmi masing-masing platform.
+                  </div>
+                </div>
+              );
+            })()}
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

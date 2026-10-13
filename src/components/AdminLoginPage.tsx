@@ -13,6 +13,8 @@ import {
   Store, ShieldCheck, Lock, Mail, ArrowLeft, Eye, EyeOff, 
   AlertCircle, CheckCircle2, KeyRound, RefreshCw, Database, Info 
 } from 'lucide-react';
+import { setStoredAdminToken } from '../lib/affiliateAttribution';
+
 
 interface AdminLoginPageProps {
   onLoginSuccess: (user: UserProfile) => void;
@@ -104,7 +106,30 @@ export default function AdminLoginPage({
     setIsLoading(true);
 
     try {
-      // 1. If Supabase Auth is configured, authenticate securely against backend
+      // 1. Authenticate against Backend Admin API with scrypt / secure credentials
+      try {
+        const backendRes = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ emailOrUsername: inputAccount, password: inputPass })
+        });
+        const backendData = await backendRes.json();
+
+        if (backendRes.ok && backendData.success && backendData.token) {
+          setStoredAdminToken(backendData.token);
+          onLoginSuccess(backendData.user);
+          setIsLoading(false);
+          return;
+        } else if (backendRes.status === 401) {
+          setErrorMessage(backendData.error || 'Email/username atau kata sandi administrator tidak valid.');
+          setIsLoading(false);
+          return;
+        }
+      } catch (backendFetchErr) {
+        console.warn('[AdminLogin] Backend API unavailable, falling back to Supabase auth:', backendFetchErr);
+      }
+
+      // 2. If Supabase Auth is configured, authenticate securely against Supabase
       if (isSupabaseConfigured && supabase) {
         const targetEmail = inputAccount.includes('@') ? inputAccount : `${inputAccount}@tumpangshop.id`;
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -143,31 +168,13 @@ export default function AdminLoginPage({
         }
       }
 
-      // 2. Standalone Mode / Offline Storage (SHA-256 Verified)
-      if (!isLocalAdminConfigured()) {
-        setIsSetupMode(true);
-        setErrorMessage('Kata sandi administrator belum diatur di perangkat ini. Silakan buat kata sandi terlebih dahulu.');
-        setIsLoading(false);
-        return;
-      }
-
-      const isValid = await verifyLocalAdminPassword(inputAccount, inputPass);
-      if (isValid) {
-        const adminUser: UserProfile = {
-          id: 'admin_primary',
-          email: ADMIN_PRIMARY_EMAIL,
-          fullName: 'Pengelola Tumpang Shop',
-          role: 'admin',
-        };
-        onLoginSuccess(adminUser);
-      } else {
-        setErrorMessage('Email/username atau kata sandi admin salah. Periksa kembali akses Anda.');
-      }
+      setErrorMessage('Identitas atau kata sandi administrator salah. Periksa kembali akses Anda.');
     } catch (err: any) {
       setErrorMessage(err?.message || 'Terjadi kesalahan sistem saat memproses login.');
     } finally {
       setIsLoading(false);
     }
+
   };
 
   return (

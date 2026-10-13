@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { CartItem, Order, StoreConfig, Product } from '../types';
 import { DISTRICTS } from '../data/mockData';
-import { PAYMENT_GATEWAY_CONFIG, createOfficialPaymentLink } from '../lib/paymentGateway';
+import { PAYMENT_GATEWAY_CONFIG, createOfficialPaymentLink, checkoutOrderViaBackend } from '../lib/paymentGateway';
+import { getActiveAffiliateAttribution } from '../lib/affiliateAttribution';
+import { calculateOrderAffiliateCommission } from '../lib/commissionCalculator';
 import { 
   X, AlertTriangle, ShieldCheck, Truck, Store, 
   CreditCard, ArrowRight, ExternalLink, Info, CheckCircle2 
@@ -31,17 +33,13 @@ export default function CheckoutModal({
   const [customerEmail, setCustomerEmail] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [customerDistrict, setCustomerDistrict] = useState(DISTRICTS[0]);
-  const [shippingMethod, setShippingMethod] = useState<'INSTANT' | 'REGULAR' | 'PICKUP'>('REGULAR');
+  const [shippingMethod] = useState<'AIR_REGULAR'>('AIR_REGULAR');
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const subtotal = items.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
-  const shippingCost = shippingMethod === 'PICKUP' 
-    ? 0 
-    : shippingMethod === 'INSTANT' 
-    ? storeConfig.defaultDeliveryFee * 1.5 
-    : storeConfig.defaultDeliveryFee;
+  const shippingCost = storeConfig.airFreightDeliveryFee ?? storeConfig.defaultDeliveryFee;
   const serviceFee = storeConfig.serviceFee;
   const total = subtotal + shippingCost + serviceFee;
 
@@ -79,55 +77,61 @@ export default function CheckoutModal({
     const now = new Date();
     const orderNumber = `TS-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${Math.floor(100 + Math.random() * 900)}`;
 
-    const newOrder: Order = {
-      id: `ord_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-      orderNumber,
-      customerName: customerName.trim(),
-      customerPhone: customerPhone.trim(),
-      customerEmail: customerEmail.trim() || undefined,
-      deliveryAddress: deliveryAddress.trim(),
-      customerDistrict,
-      deliveryNotes: deliveryNotes.trim() || undefined,
-      shippingMethod,
-      shippingCost,
-      items: items.map(item => ({
+    const attribution = getActiveAffiliateAttribution();
+    let affiliateSnapshot = undefined;
+
+    if (attribution?.referralCode) {
+      const itemsForCommission = items.map(item => ({
         productId: item.product.id,
         name: item.product.name,
         sku: item.selectedOption?.sku || item.product.sku,
-        unit: item.product.unit,
-        variationInfo: item.selectedOption ? `${item.selectedVariationName}: ${item.selectedOption.name}` : undefined,
         price: item.unitPrice,
         quantity: item.quantity,
         subtotal: item.unitPrice * item.quantity
-      })),
-      subtotal,
-      serviceFee,
-      total,
-      // Initial status MUST be PENDING per marketplace specifications
-      paymentStatus: 'PENDING',
-      orderStatus: 'NEW',
-      paymentMethod: 'PAYMENT_GATEWAY_LINK',
-      paymentGateway: PAYMENT_GATEWAY_CONFIG.gatewayName,
-      paymentExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString()
-    };
+      }));
+
+      affiliateSnapshot = calculateOrderAffiliateCommission(
+        itemsForCommission,
+        attribution.referralCode,
+        storeConfig,
+        products,
+        [],
+        { id: attribution.affiliateId, fullName: attribution.affiliateName }
+      );
+    }
 
     try {
-      // Connect to payment gateway provider
-      const paymentResult = await createOfficialPaymentLink(newOrder);
+      const checkoutResult = await checkoutOrderViaBackend({
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        customerEmail: customerEmail.trim() || undefined,
+        deliveryAddress: deliveryAddress.trim(),
+        customerProvince: 'Jawa Timur',
+        customerCity: 'Kabupaten Malang',
+        customerDistrict,
+        customerPostalCode: '65156',
+        deliveryNotes: deliveryNotes.trim() || undefined,
+        items: items.map(item => ({
+          productId: item.product.id,
+          selectedOptionId: item.selectedOption?.id,
+          quantity: item.quantity
+        })),
+        referralCode: attribution?.referralCode || undefined,
+        clientCatalogProducts: products,
+        storeConfig
+      });
 
-      if (paymentResult.success && paymentResult.paymentLinkUrl) {
-        newOrder.paymentLinkUrl = paymentResult.paymentLinkUrl;
-        newOrder.paymentReference = paymentResult.referenceId;
+      const finalOrder = checkoutResult.order;
+      if (affiliateSnapshot) {
+        finalOrder.affiliateCommission = affiliateSnapshot;
       }
 
       setIsSubmitting(false);
-      onOrderCreated(newOrder, paymentResult.paymentLinkUrl);
-    } catch (err) {
-      console.error('Error creating order/payment link:', err);
+      onOrderCreated(finalOrder, checkoutResult.paymentLinkUrl);
+    } catch (err: any) {
+      console.error('Error in checkoutOrderViaBackend:', err);
+      setErrorMsg(err?.message || 'Gagal memproses pesanan dan perhitungan pembayaran di backend.');
       setIsSubmitting(false);
-      onOrderCreated(newOrder);
     }
   };
 
@@ -283,64 +287,23 @@ export default function CheckoutModal({
 
           {/* Shipping Method */}
           <div className="space-y-2 pt-2 border-t border-slate-100">
-            <h3 className="text-xs font-bold text-emerald-900 uppercase tracking-wider">
+            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
               2. Metode Pengiriman
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <label
-                onClick={() => setShippingMethod('REGULAR')}
-                className={`p-3 rounded-xl border cursor-pointer flex flex-col justify-between text-left transition-all ${
-                  shippingMethod === 'REGULAR'
-                    ? 'border-emerald-600 bg-emerald-50/70 shadow-2xs ring-1 ring-emerald-600'
-                    : 'border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-800">Kurir Reguler</span>
-                  <Truck className="w-3.5 h-3.5 text-emerald-600" />
-                </div>
-                <div className="text-[11px] text-slate-500">Antar hari yang sama</div>
-                <div className="text-xs font-extrabold text-emerald-800 mt-1">
-                  Rp {storeConfig.defaultDeliveryFee.toLocaleString('id-ID')}
-                </div>
-              </label>
-
-              <label
-                onClick={() => setShippingMethod('INSTANT')}
-                className={`p-3 rounded-xl border cursor-pointer flex flex-col justify-between text-left transition-all ${
-                  shippingMethod === 'INSTANT'
-                    ? 'border-emerald-600 bg-emerald-50/70 shadow-2xs ring-1 ring-emerald-600'
-                    : 'border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-800">Kurir Prioritas</span>
-                  <Truck className="w-3.5 h-3.5 text-amber-600" />
-                </div>
-                <div className="text-[11px] text-slate-500">Sampai dalam 1-2 jam</div>
-                <div className="text-xs font-extrabold text-emerald-800 mt-1">
-                  Rp {(storeConfig.defaultDeliveryFee * 1.5).toLocaleString('id-ID')}
-                </div>
-              </label>
-
-              <label
-                onClick={() => setShippingMethod('PICKUP')}
-                className={`p-3 rounded-xl border cursor-pointer flex flex-col justify-between text-left transition-all ${
-                  shippingMethod === 'PICKUP'
-                    ? 'border-emerald-600 bg-emerald-50/70 shadow-2xs ring-1 ring-emerald-600'
-                    : 'border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-800">Ambil di Outlet Toko</span>
-                  <Store className="w-3.5 h-3.5 text-slate-600" />
-                </div>
-                <div className="text-[11px] text-slate-500">Outlet Tumpang Shop Malang</div>
-                <div className="text-xs font-extrabold text-emerald-800 mt-1">
-                  Gratis (Rp 0)
-                </div>
-              </label>
+            <div className="p-3 rounded-xl border-2 border-orange-500 bg-orange-50/40">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-black text-slate-900">Pengiriman Reguler via Udara</span>
+                <span className="text-xs font-bold text-[#FE8A00]">
+                  Rp {shippingCost.toLocaleString('id-ID')}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-600 font-medium">
+                Estimasi ~14 hari kalender setelah pembayaran terverifikasi & pesanan dikonfirmasi diproses.
+              </div>
+              <div className="text-[10px] text-slate-400 mt-1 italic">
+                * Estimasi sementara operasional kargo udara dan bea cukai (bukan garansi tanggal pasti).
+              </div>
             </div>
           </div>
 

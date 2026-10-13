@@ -1,13 +1,15 @@
 import React from 'react';
 import { Category, Product } from '../types';
 import { getCategoryPhotoAuto } from '../data/mockData';
-import { Package, Apple, Coffee, Beef, Cookie, Sparkles, Layers } from 'lucide-react';
+import { Package, Apple, Coffee, Beef, Cookie, Layers, FolderTree, Tag } from 'lucide-react';
 
 interface CategoryVisualCardsProps {
   categories: Category[];
   products: Product[];
   selectedCategoryId: string;
   onSelectCategory: (categoryId: string) => void;
+  selectedSubcategoryId?: string;
+  onSelectSubcategory?: (subcategoryId: string) => void;
 }
 
 // Icon mapper for categories
@@ -30,19 +32,29 @@ export default function CategoryVisualCards({
   categories,
   products,
   selectedCategoryId,
-  onSelectCategory
+  onSelectCategory,
+  selectedSubcategoryId = 'all',
+  onSelectSubcategory
 }: CategoryVisualCardsProps) {
-  // Sort active categories by orderIndex
-  const activeCategories = [...categories]
-    .filter(c => c.isActive)
+  // Main Categories: only active root categories (no parentId)
+  const activeMainCategories = [...categories]
+    .filter(c => !c.parentId && c.isActive)
     .sort((a, b) => a.orderIndex - b.orderIndex);
 
-  // If no categories have been added by admin yet, do not render category section
-  if (activeCategories.length === 0) {
+  // If no main categories have been added by admin yet, do not render category section
+  if (activeMainCategories.length === 0) {
     return null;
   }
 
   const totalActiveProducts = products.filter(p => p.isActive).length;
+
+  // Selected main category details & its active subcategories
+  const selectedMainCategory = categories.find(c => c.id === selectedCategoryId);
+  const activeSubcategories = selectedCategoryId !== 'all'
+    ? [...categories]
+        .filter(c => c.parentId === selectedCategoryId && c.isActive)
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+    : [];
 
   return (
     <section className="space-y-4">
@@ -61,7 +73,10 @@ export default function CategoryVisualCards({
 
         {selectedCategoryId !== 'all' && (
           <button
-            onClick={() => onSelectCategory('all')}
+            onClick={() => {
+              onSelectCategory('all');
+              if (onSelectSubcategory) onSelectSubcategory('all');
+            }}
             className="text-xs font-bold text-[#FE8A00] hover:text-[#e07b00] bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-xl transition-colors"
           >
             Lihat Semua Kategori
@@ -73,7 +88,10 @@ export default function CategoryVisualCards({
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4">
         {/* "Semua Produk" Card */}
         <button
-          onClick={() => onSelectCategory('all')}
+          onClick={() => {
+            onSelectCategory('all');
+            if (onSelectSubcategory) onSelectSubcategory('all');
+          }}
           className={`group text-left p-3 rounded-2xl border transition-all flex flex-col justify-between relative overflow-hidden h-[150px] sm:h-[160px] ${
             selectedCategoryId === 'all'
               ? 'border-orange-500 bg-[#FE8A00] text-white shadow-md shadow-orange-500/20 ring-2 ring-orange-400'
@@ -114,8 +132,8 @@ export default function CategoryVisualCards({
           </div>
         </button>
 
-        {/* Dynamic Category Visual Cards */}
-        {activeCategories.map((cat) => {
+        {/* Dynamic Main Category Visual Cards */}
+        {activeMainCategories.map((cat) => {
           const count = products.filter(p => p.categoryId === cat.id && p.isActive).length;
           const isSelected = selectedCategoryId === cat.id;
           const categoryPhoto = cat.imageUrl || getCategoryPhotoAuto(cat.name);
@@ -123,7 +141,10 @@ export default function CategoryVisualCards({
           return (
             <button
               key={cat.id}
-              onClick={() => onSelectCategory(cat.id)}
+              onClick={() => {
+                onSelectCategory(cat.id);
+                if (onSelectSubcategory) onSelectSubcategory('all');
+              }}
               className={`group text-left rounded-2xl border transition-all flex flex-col justify-between relative overflow-hidden h-[150px] sm:h-[160px] ${
                 isSelected
                   ? 'border-orange-500 ring-2 ring-orange-500 shadow-md shadow-orange-500/20'
@@ -138,7 +159,6 @@ export default function CategoryVisualCards({
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 opacity-60"
                   onError={(e) => {
-                    // Safe fallback if external photo fails - replace with secondary guaranteed fallback
                     const target = e.currentTarget;
                     target.onerror = null;
                     target.src = 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=80';
@@ -155,8 +175,8 @@ export default function CategoryVisualCards({
               <div className="relative z-10 p-3 flex items-center justify-between w-full">
                 <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs backdrop-blur-md shadow-xs ${
                   isSelected 
-                    ? 'bg-emerald-500 text-white' 
-                    : 'bg-white/90 text-emerald-800'
+                    ? 'bg-[#FE8A00] text-white' 
+                    : 'bg-white/90 text-orange-900'
                 }`}>
                   {getCategoryIcon(cat.icon)}
                 </span>
@@ -171,7 +191,7 @@ export default function CategoryVisualCards({
                   {cat.name}
                 </h3>
                 {isSelected && (
-                  <span className="inline-block mt-1 text-[9px] font-bold uppercase tracking-wider text-emerald-300">
+                  <span className="inline-block mt-1 text-[9px] font-bold uppercase tracking-wider text-orange-300">
                     ● Terpilih
                   </span>
                 )}
@@ -180,6 +200,74 @@ export default function CategoryVisualCards({
           );
         })}
       </div>
+
+      {/* Subcategory Pills Bar (Shown when a Main Category with Subcategories is selected) */}
+      {selectedCategoryId !== 'all' && activeSubcategories.length > 0 && onSelectSubcategory && (
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-3.5 sm:p-4 shadow-2xs space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+              <FolderTree className="w-3.5 h-3.5 text-[#FE8A00]" />
+              <span>Subkategori {selectedMainCategory?.name}:</span>
+            </div>
+            <span className="text-[11px] text-slate-400">
+              {activeSubcategories.length} pilihan varian
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* "Semua Subkategori" pill */}
+            <button
+              type="button"
+              onClick={() => onSelectSubcategory('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                selectedSubcategoryId === 'all'
+                  ? 'bg-[#FE8A00] text-white shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200/70 text-slate-700'
+              }`}
+            >
+              <span>Semua {selectedMainCategory?.name}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                selectedSubcategoryId === 'all' ? 'bg-orange-700 text-white' : 'bg-slate-200 text-slate-600'
+              }`}>
+                {products.filter(p => p.categoryId === selectedCategoryId && p.isActive).length}
+              </span>
+            </button>
+
+            {/* Individual Subcategory pills */}
+            {activeSubcategories.map(subcat => {
+              const subCount = products.filter(p => p.subcategoryId === subcat.id && p.isActive).length;
+              const isSubSelected = selectedSubcategoryId === subcat.id;
+              return (
+                <button
+                  key={subcat.id}
+                  type="button"
+                  onClick={() => onSelectSubcategory(subcat.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                    isSubSelected
+                      ? 'bg-orange-500 text-white font-bold shadow-xs'
+                      : 'bg-white border border-slate-200 hover:border-orange-300 hover:bg-orange-50/20 text-slate-700'
+                  }`}
+                >
+                  {subcat.imageUrl && (
+                    <img 
+                      src={subcat.imageUrl} 
+                      alt="" 
+                      className="w-4 h-4 rounded-full object-cover shrink-0" 
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
+                  )}
+                  <span>{subcat.name}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    isSubSelected ? 'bg-orange-700 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {subCount}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
