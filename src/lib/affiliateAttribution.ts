@@ -523,12 +523,18 @@ export function getAffiliatePerformanceMetrics(
     validOrdersCount++;
     totalSalesVolume += ord.total;
 
-    const commAmount = ord.affiliateCommission?.totalCommission || 0;
+    const rawAmount = ord.affiliateCommission?.totalCommission ?? (ord.affiliateCommission as any)?.commissionAmount ?? 0;
+    const commAmount = Number(rawAmount) || 0;
     const commStatus = ord.affiliateCommission?.status || 'PENDING';
+
+    // Strictly exclude rejected or cancelled commissions (even if order was completed or paid)
+    if (commStatus === 'REJECTED' || commStatus === 'CANCELLED') {
+      continue;
+    }
 
     if (commStatus === 'PAID') {
       paidCommission += commAmount;
-    } else if (commStatus === 'APPROVED' || ord.orderStatus === 'COMPLETED' || ord.paymentStatus === 'PAID') {
+    } else if (commStatus === 'APPROVED' || (ord.orderStatus === 'COMPLETED' && ord.paymentStatus === 'PAID')) {
       approvedCommission += commAmount;
     } else {
       pendingCommission += commAmount;

@@ -306,4 +306,61 @@ export function updatePayoutStatusInStore(
   return existing;
 }
 
+// ----------------------------------------------------------------------------
+// Product Reviews Store (Disk + Memory)
+// ----------------------------------------------------------------------------
+import { ProductReview } from '../types';
+const REVIEWS_FILE = path.join(DATA_DIR, 'server-reviews.json');
+const reviewCache = new Map<string, ProductReview>();
+
+try {
+  if (fs.existsSync(REVIEWS_FILE)) {
+    const raw = fs.readFileSync(REVIEWS_FILE, 'utf-8');
+    const reviews: ProductReview[] = JSON.parse(raw);
+    for (const r of reviews) {
+      if (r && r.id) {
+        reviewCache.set(r.id, r);
+      }
+    }
+    console.log(`[ReviewStore] Loaded ${reviewCache.size} persistent reviews from disk.`);
+  }
+} catch (e) {
+  console.warn('[ReviewStore] Warning loading reviews from disk:', e);
+}
+
+function flushReviewsToDisk() {
+  try {
+    const unique = Array.from(reviewCache.values());
+    const tmp = `${REVIEWS_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(unique, null, 2), 'utf-8');
+    fs.renameSync(tmp, REVIEWS_FILE);
+  } catch (err) {
+    console.error('[ReviewStore] Failed to save reviews to disk:', err);
+  }
+}
+
+export function saveReviewToStore(review: ProductReview): ProductReview {
+  reviewCache.set(review.id, review);
+  flushReviewsToDisk();
+  return review;
+}
+
+export function getReviewsFromStore(productId?: string): ProductReview[] {
+  const all = Array.from(reviewCache.values());
+  if (!productId) return all;
+  return all.filter(r => r.productId === productId);
+}
+
+export function hasUserReviewedOrderProduct(orderId: string, productId: string, userId?: string): boolean {
+  for (const r of reviewCache.values()) {
+    if (r.orderId === orderId && r.productId === productId) {
+      if (!userId || r.userId === userId) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+
 

@@ -1,0 +1,145 @@
+[
+  {
+    "id": "pay_1791894905434_5sc7",
+    "affiliateId": "aff_1791894905380_7f1i",
+    "referralCode": "TS-AFFILIAT19",
+    "amount": 50000,
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountName": "Affiliate Audit Tester",
+    "status": "PENDING",
+    "createdAt": "2026-10-13T12:35:05.434Z"
+  },
+  {
+    "id": "pay_1791895474247_sxhz",
+    "affiliateId": "aff_1791895474183_rmg5",
+    "referralCode": "TS-AFFILIAT88",
+    "amount": 50000,
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountName": "Affiliate Audit Tester",
+    "status": "PENDING",
+    "createdAt": "2026-10-13T12:44:34.247Z"
+  },
+  {
+    "id": "pay_1791895668021_84mi",
+    "affiliateId": "aff_1791895667979_x2ra",
+    "referralCode": "TS-AFFILIAT65",
+    "amount": 50000,
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountName": "Affiliate Audit Tester",
+    "status": "PENDING",
+    "createdAt": "2026-10-13T12:47:48.021Z"
+  },
+  {
+    "id": "pay_1791897069666_inqr",
+    "affiliateId": "aff_1791897069618_rc8l",
+    "referralCode": "TS-AFFILIAT69",
+    "amount": 50000,
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountName": "Affiliate Audit Tester",
+    "status": "PENDING",
+    "createdAt": "2026-10-13T13:11:09.666Z"
+  },
+  {
+    "id": "pay_1791897092921_rctp",
+    "affiliateId": "aff_1791897092892_cltk",
+    "referralCode": "TS-AFFILIAT48",
+    "amount": 50000,
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountName": "Affiliate Audit Tester",
+    "status": "PENDING",
+    "createdAt": "2026-10-13T13:11:32.921Z"
+  },
+  {
+    "id": "pay_1791897139449_c01u",
+    "affiliateId": "aff_1791897139424_jk00",
+    "referralCode": "TS-AFFILIAT33",
+    "amount": 50000,
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountName": "Affiliate Audit Tester",
+    "status": "PENDING",
+    "createdAt": "2026-10-13T13:12:19.449Z"
+  },
+  {
+    "id": "pay_1791897162552_g9un",
+    "affiliateId": "aff_1791897162527_0idj",
+    "referralCode": "TS-AFFILIAT70",
+    "amount": 50000,
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountName": "Affiliate Audit Tester",
+    "status": "PENDING",
+    "createdAt": "2026-10-13T13:12:42.552Z"
+  },
+  {
+    "id": "pay_1791897288961_z8zx",
+    "affiliateId": "aff_1791897288935_yj9a",
+    "referralCode": "TS-AFFILIAT31",
+    "amount": 50000,
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountName": "Affiliate Audit Tester",
+    "status": "PENDING",
+    "createdAt": "2026-10-13T13:14:48.961Z"
+  },
+  {
+    "id": "pay_1791897817025_o5x7",
+    "affiliateId": "aff_1791897816981_go9c",
+    "referralCode": "TS-AFFILIAT28",
+    "amount": 50000,
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountName": "Affiliate Audit Tester",
+    "status": "PENDING",
+    "createdAt": "2026-10-13T13:23:37.025Z"
+  },
+  {
+    "id": "pay_1791898022292_o9yh",
+    "affiliateId": "aff_1791898022260_7vpk",
+    "referralCode": "TS-AFFILIAT68",
+    "amount": 50000,
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountName": "Affiliate Audit Tester",
+    "status": "PENDING",
+    "createdAt": "2026-10-13T13:27:02.292Z"
+  },
+  {
+    "id": "pay_1791898036571_1mj9",
+    "affiliateId": "aff_1791898036524_p5bb",
+    "referralCode": "TS-AFFILIAT46",
+    "amount": 50000,
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountName": "Affiliate Audit Tester",
+    "status": "PENDING",
+    "createdAt": "2026-10-13T13:27:16.571Z"
+  },
+  {
+    "id": "pay_1791898400947_izoy",
+    "affiliateId": "aff_1791898400891_axjx",
+    "referralCode": "TS-AFFILIAT61",
+    "amount": 50000,
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountName": "Affiliate Audit Tester",
+    "status": "PENDING",
+    "createdAt": "2026-10-13T13:33:20.947Z"
+  },
+  {
+    "id": "pay_1791898839882_obey",
+    "affiliateId": "aff_1791898839830_7oot",
+    "referralCode": "TS-AFFILIAT54",
+    "amount": 50000,
+    "bankName": "BCA",
+    "accountNumber": "1234567890",
+    "accountName": "Affiliate Audit Tester",
+    "status": "PENDING",
+    "createdAt": "2026-10-13T13:40:39.882Z"
+  }
+]

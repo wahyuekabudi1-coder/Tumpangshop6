@@ -55,7 +55,7 @@ import {
   generateNonCollidingUniqueCode,
   calculateOrderBackend,
   verifyArtoPayWebhookSignature
-} from '../src/server/artopayAdapter.js';
+} from '../src/server/artopayAdapter.ts';
 
 // Test 2.1: Config separation (sandbox vs production)
 const testConfig = getArtoPayConfig({
@@ -191,7 +191,7 @@ console.log('\n--- TEST SUITE 3: AFFILIATE ATTRIBUTION & ISOLATION ---');
 import { 
   detectReferralSource, 
   ATTRIBUTION_WINDOW_MS 
-} from '../src/lib/affiliateAttribution.js';
+} from '../src/lib/affiliateAttribution.ts';
 
 assert(ATTRIBUTION_WINDOW_MS === 30 * 24 * 60 * 60 * 1000, 'Attribution window is strictly 30 days');
 

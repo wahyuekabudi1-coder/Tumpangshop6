@@ -1,6 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { initialProducts, initialCategories, initialStoreConfig } from '../data/mockData';
 import { Product, Category, StoreConfig, Order, UserProfile, ProductReview, AffiliateApplication, AffiliateCampaign } from '../types';
+import { getStoredAdminToken } from './affiliateAttribution';
 
 const env = (import.meta as any).env || {};
 const supabaseUrl = env.VITE_SUPABASE_URL || '';
@@ -290,48 +291,9 @@ export const saveStoredOrder = (order: Order): Order => {
     console.error('Failed to save order locally', err);
   }
 
-  if (supabase) {
-    (async () => {
-      try {
-        await supabase.from('orders').upsert({
-          id: order.id,
-          order_number: order.orderNumber,
-          customer_name: order.customerName,
-          customer_phone: order.customerPhone,
-          customer_email: order.customerEmail,
-          delivery_address: order.deliveryAddress,
-          customer_district: order.customerDistrict,
-          delivery_notes: order.deliveryNotes,
-          shipping_method: order.shippingMethod,
-          shipping_cost: order.shippingCost,
-          items: order.items,
-          subtotal: order.subtotal,
-          service_fee: order.serviceFee,
-          total: order.total,
-          payment_status: order.paymentStatus,
-          order_status: order.orderStatus,
-          payment_method: order.paymentMethod,
-          payment_link_url: order.paymentLinkUrl,
-          payment_gateway: order.paymentGateway,
-          payment_reference: order.paymentReference,
-          referral_code: order.referralCode || null,
-          affiliate_commission: order.affiliateCommission || null,
-          unique_code: order.uniqueCode || 0,
-          artopay_payment_id: order.artopayPaymentId || null,
-          artopay_customer_token: order.artopayCustomerToken || null,
-          is_test_transaction: Boolean(order.isTestTransaction),
-          simulation_note: order.simulationNote || null,
-          paid_at: order.paidAt,
-          payment_expires_at: order.paymentExpiresAt,
-          created_at: order.createdAt,
-          updated_at: new Date().toISOString()
-        });
-      } catch (err) {
-        console.warn('Supabase order sync warning:', err);
-      }
-    })();
-  }
-
+  // Security note: Direct public/authenticated client INSERT on public.orders is revoked.
+  // All orders are calculated and persisted server-side by /api/orders/checkout using
+  // secure backend credentials.
   return order;
 };
 
@@ -461,26 +423,22 @@ export const saveStoredReview = (review: ProductReview): ProductReview => {
     console.error('Failed to save review locally', err);
   }
 
-  if (supabase) {
-    (async () => {
-      try {
-        await supabase.from('product_reviews').upsert({
-          id: review.id,
-          product_id: review.productId,
-          user_id: review.userId,
-          user_name: review.userName,
-          user_email: review.userEmail,
-          order_id: review.orderId,
-          is_verified_purchase: review.isVerifiedPurchase,
-          rating: review.rating,
-          comment: review.comment,
-          created_at: review.createdAt
-        });
-      } catch (err) {
-        console.warn('Supabase review sync warning:', err);
+  // Submit via secure backend API (enforces verified completed purchase check & server credentials)
+  (async () => {
+    try {
+      const res = await fetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(review)
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.warn('Backend review response notice:', errData);
       }
-    })();
-  }
+    } catch (err) {
+      console.warn('Backend review submission warning:', err);
+    }
+  })();
 
   return review;
 };
@@ -831,50 +789,27 @@ export const fetchDataFromSupabase = async (): Promise<{
       } catch {}
     }
 
-    // 3. Orders
-    const { data: dbOrders, error: ordErr } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-    if (!ordErr && dbOrders && dbOrders.length > 0) {
-      results.orders = dbOrders.map((d: any) => ({
-        id: d.id,
-        orderNumber: d.order_number,
-        customerName: d.customer_name,
-        customerPhone: d.customer_phone,
-        customerEmail: d.customer_email || undefined,
-        deliveryAddress: d.delivery_address,
-        customerProvince: d.customer_province || undefined,
-        customerCity: d.customer_city || undefined,
-        customerDistrict: d.customer_district || '',
-        customerPostalCode: d.customer_postal_code || undefined,
-        deliveryNotes: d.delivery_notes || undefined,
-        shippingMethod: d.shipping_method || 'AIR_REGULAR',
-        shippingCost: Number(d.shipping_cost || 0),
-        estimatedAirDeliveryDays: d.estimated_air_delivery_days ? Number(d.estimated_air_delivery_days) : undefined,
-        shippingCarrier: d.shipping_carrier || undefined,
-        items: d.items || [],
-        subtotal: Number(d.subtotal || 0),
-        serviceFee: Number(d.service_fee || 0),
-        uniqueCode: Number(d.unique_code || 0),
-        total: Number(d.total || 0),
-        paymentStatus: d.payment_status || 'PENDING',
-        orderStatus: d.order_status || 'NEW',
-        paymentMethod: d.payment_method || 'ARTOPAY_LINK',
-        paymentGateway: d.payment_gateway || 'ARTOPAY',
-        paymentLinkUrl: d.payment_link_url || undefined,
-        paymentReference: d.payment_reference || undefined,
-        artopayPaymentId: d.artopay_payment_id || undefined,
-        artopayCustomerToken: d.artopay_customer_token || undefined,
-        isTestTransaction: Boolean(d.is_test_transaction),
-        simulationNote: d.simulation_note || undefined,
-        paidAt: d.paid_at || undefined,
-        paymentExpiresAt: d.payment_expires_at || undefined,
-        referralCode: d.referral_code || undefined,
-        affiliateCommission: d.affiliate_commission || undefined,
-        createdAt: d.created_at,
-        updatedAt: d.updated_at
-      }));
+    // 3. Orders: Direct client access to public.orders table is completely revoked for security.
+    // In browser, orders are retrieved via authenticated backend endpoint /api/admin/orders
+    // if an administrator is authenticated, protecting customer PII and preventing 403 errors.
+    const adminToken = getStoredAdminToken();
+    if (adminToken) {
       try {
-        localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(results.orders));
-      } catch {}
+        const adminOrdRes = await fetch('/api/admin/orders', {
+          headers: { Authorization: `Bearer ${adminToken}` }
+        });
+        if (adminOrdRes.ok) {
+          const ordJson = await adminOrdRes.json();
+          if (ordJson.success && Array.isArray(ordJson.orders)) {
+            results.orders = ordJson.orders;
+            try {
+              localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(results.orders));
+            } catch {}
+          }
+        }
+      } catch (adminOrdErr) {
+        console.warn('Backend admin orders fetch notice:', adminOrdErr);
+      }
     }
 
     // 4. Affiliate Applications
@@ -920,8 +855,13 @@ export const fetchDataFromSupabase = async (): Promise<{
       } catch {}
     }
 
-    // 6. Store Config
-    const { data: dbConfig, error: confErr } = await supabase.from('store_config').select('*').limit(1).single();
+    // 6. Store Config: Query only safe public columns without exposing internal tokens or credentials
+    const { data: dbConfig, error: confErr } = await supabase
+      .from('store_config')
+      .select('id, store_name, store_tagline, store_address, store_phone, is_open, min_order_amount, default_delivery_fee, air_freight_delivery_fee, air_freight_estimated_days, service_fee, default_affiliate_commission_rate, qris_image_url')
+      .limit(1)
+      .maybeSingle();
+
     if (!confErr && dbConfig) {
       results.storeConfig = {
         storeName: dbConfig.store_name,
@@ -940,6 +880,18 @@ export const fetchDataFromSupabase = async (): Promise<{
       try {
         localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(results.storeConfig));
       } catch {}
+    } else {
+      // Fallback to secure public backend config endpoint
+      try {
+        const publicConfRes = await fetch('/api/config/public');
+        if (publicConfRes.ok) {
+          const publicConfJson = await publicConfRes.json();
+          if (publicConfJson.success && publicConfJson.config) {
+            results.storeConfig = publicConfJson.config;
+            localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(results.storeConfig));
+          }
+        }
+      } catch {}
     }
 
     return results;
@@ -948,5 +900,90 @@ export const fetchDataFromSupabase = async (): Promise<{
     return null;
   }
 };
+
+// ----------------------------------------------------------------------------
+// AUTHENTICATED ADMIN ORDER API CLIENT HELPERS
+// ----------------------------------------------------------------------------
+
+export async function fetchAdminOrders(token?: string): Promise<Order[]> {
+  const authToken = token || getStoredAdminToken();
+  if (!authToken) return getStoredOrders();
+
+  try {
+    const res = await fetch('/api/admin/orders', {
+      headers: { Authorization: `Bearer ${authToken}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.orders)) {
+        saveStoredOrders(data.orders);
+        return data.orders;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to fetch admin orders via backend:', err);
+  }
+  return getStoredOrders();
+}
+
+export async function fetchAdminOrderDetail(orderId: string, token?: string): Promise<Order | null> {
+  const authToken = token || getStoredAdminToken();
+  if (!authToken) {
+    return getStoredOrders().find(o => o.id === orderId || o.orderNumber === orderId) || null;
+  }
+
+  try {
+    const res = await fetch(`/api/admin/orders/${encodeURIComponent(orderId)}`, {
+      headers: { Authorization: `Bearer ${authToken}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.order) {
+        saveStoredOrder(data.order);
+        return data.order;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to fetch admin order detail via backend:', err);
+  }
+
+  return getStoredOrders().find(o => o.id === orderId || o.orderNumber === orderId) || null;
+}
+
+export async function updateAdminOrderStatus(
+  orderId: string,
+  updates: {
+    orderStatus?: string;
+    paymentStatus?: string;
+    trackingNumber?: string;
+    shippingCarrier?: string;
+    trackingUrl?: string;
+  },
+  token?: string
+): Promise<Order | null> {
+  const authToken = token || getStoredAdminToken();
+  if (!authToken) return null;
+
+  try {
+    const res = await fetch(`/api/admin/orders/${encodeURIComponent(orderId)}/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`
+      },
+      body: JSON.stringify(updates)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.order) {
+        saveStoredOrder(data.order);
+        return data.order;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to update admin order status via backend:', err);
+  }
+  return null;
+}
 
 

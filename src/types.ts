@@ -108,7 +108,7 @@ export interface OrderAffiliateSnapshot {
   affiliateName?: string;
   totalCommission: number;
   itemsCommission: OrderItemCommissionSnapshot[];
-  status: 'PENDING' | 'APPROVED' | 'PAID' | 'CANCELLED';
+  status: 'PENDING' | 'APPROVED' | 'PAID' | 'CANCELLED' | 'REJECTED';
   calculatedAt: string;
 }
 

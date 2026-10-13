@@ -5,12 +5,12 @@ import {
   AffiliateCampaign, CampaignStatus, CampaignConflict, OrderAffiliateSnapshot
 } from '../types';
 import { getCategoryPhotoAuto } from '../data/mockData';
-import { uploadProductImageToStorage, getSupabaseConfigStatus } from '../lib/supabase';
+import { uploadProductImageToStorage, getSupabaseConfigStatus, fetchAdminOrders, updateAdminOrderStatus } from '../lib/supabase';
 import { 
   getCampaignPerformance, detectCampaignConflicts, isCampaignActiveAt, 
   getEffectiveProductCommission, syncOrderAffiliateStatus 
 } from '../lib/commissionCalculator';
-import { getPayoutRequests, updatePayoutRequestStatus, AffiliatePayoutRequest } from '../lib/affiliateAttribution';
+import { getPayoutRequests, updatePayoutRequestStatus, AffiliatePayoutRequest, getStoredAdminToken } from '../lib/affiliateAttribution';
 import AdminOrderDetailPage from './admin/AdminOrderDetailPage';
 import AdminCampaignFormPage from './admin/AdminCampaignFormPage';
 import AdminCustomerDetailPage from './admin/AdminCustomerDetailPage';
@@ -97,6 +97,20 @@ export default function AdminDashboard({
   // Primary Tab and Dedicated Form/Detail Page View Modes
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [formView, setFormView] = useState<AdminViewMode>('list');
+
+  // Synchronize orders with backend using authenticated admin session
+  useEffect(() => {
+    const adminToken = getStoredAdminToken();
+    if (adminToken) {
+      fetchAdminOrders(adminToken).then(serverOrders => {
+        if (serverOrders && serverOrders.length > 0) {
+          onUpdateOrders(serverOrders);
+        }
+      }).catch(err => {
+        console.warn('[AdminDashboard] Orders backend fetch notice:', err);
+      });
+    }
+  }, []);
 
   // Active target IDs for dedicated edit and detail pages
   const [activeEditingProductId, setActiveEditingProductId] = useState<string | null>(null);
@@ -848,6 +862,14 @@ export default function AdminDashboard({
     });
     onUpdateOrders(updated);
     showToast(`Status pesanan diperbarui menjadi ${newStatus}`);
+
+    // Persist to backend server and Supabase via authenticated endpoint
+    const adminToken = getStoredAdminToken();
+    if (adminToken) {
+      updateAdminOrderStatus(orderId, { orderStatus: newStatus }, adminToken).catch(err => {
+        console.warn('Backend orderStatus sync notice:', err);
+      });
+    }
   };
 
   const handleUpdatePaymentStatus = (orderId: string, newStatus: Order['paymentStatus']) => {
@@ -865,6 +887,14 @@ export default function AdminDashboard({
     });
     onUpdateOrders(updated);
     showToast(`Status pembayaran diperbarui menjadi ${newStatus}`);
+
+    // Persist to backend server and Supabase via authenticated endpoint
+    const adminToken = getStoredAdminToken();
+    if (adminToken) {
+      updateAdminOrderStatus(orderId, { paymentStatus: newStatus }, adminToken).catch(err => {
+        console.warn('Backend paymentStatus sync notice:', err);
+      });
+    }
   };
 
   const handleBulkUpdateOrderStatus = (status: Order['orderStatus']) => {
@@ -875,8 +905,16 @@ export default function AdminDashboard({
         : o
     );
     onUpdateOrders(updated);
+    const affectedIds = [...selectedOrderIds];
     setSelectedOrderIds([]);
-    showToast(`${selectedOrderIds.length} pesanan diubah ke status ${status}`);
+    showToast(`${affectedIds.length} pesanan diubah ke status ${status}`);
+
+    const adminToken = getStoredAdminToken();
+    if (adminToken) {
+      affectedIds.forEach(id => {
+        updateAdminOrderStatus(id, { orderStatus: status }, adminToken).catch(() => {});
+      });
+    }
   };
 
   const handleUpdateTrackingInfo = (orderId: string, trackingNumber: string, shippingCarrier?: string, trackingUrl?: string) => {
@@ -894,6 +932,13 @@ export default function AdminDashboard({
     });
     onUpdateOrders(updated);
     showToast('Informasi pelacakan kargo udara berhasil disimpan');
+
+    const adminToken = getStoredAdminToken();
+    if (adminToken) {
+      updateAdminOrderStatus(orderId, { trackingNumber, shippingCarrier, trackingUrl }, adminToken).catch(err => {
+        console.warn('Backend tracking sync notice:', err);
+      });
+    }
   };
 
   // --------------------------------------------------------------------------

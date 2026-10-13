@@ -11,6 +11,138 @@
     "createdAt": "2026-10-13T07:52:34.081Z"
   },
   {
+    "id": "aff_1791889521140_jf87",
+    "fullName": "Mitra Audit Production",
+    "phone": "081298765432",
+    "email": "aff_audit_1791889521058@example.com",
+    "promotionChannel": "Status WhatsApp & TikTok",
+    "status": "APPROVED",
+    "referralCode": "TS-MITRAAUD24",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$4040b0b4582667b78d330b20fe6fc649$78548ecf4d4a6e2e20cb30cfa0030e66cddbe2ae1b412aa19358ae76988d5da5ac11bfd7e0f829708382f3a5bc31e2c43313cb37f7eed28dc7dea6c7aa1df66e",
+    "createdAt": "2026-10-13T11:05:21.140Z"
+  },
+  {
+    "id": "aff_1791889322416_ynus",
+    "fullName": "Mitra Audit Production",
+    "phone": "081298765432",
+    "email": "aff_audit_1791889322306@example.com",
+    "promotionChannel": "Status WhatsApp & TikTok",
+    "status": "APPROVED",
+    "referralCode": "TS-MITRAAUD65",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$1b6a69aa65843c3889bdcb238df48b2d$fa127e11c5f1652a463531868637785afe0eebf24bb0eb3244e168ee4a968a36e716a4859ae40045414c241077fc49698a7a663bbe78bf45ae6b6c89335d1193",
+    "createdAt": "2026-10-13T11:02:02.417Z"
+  },
+  {
+    "id": "aff_1791889274897_04f9",
+    "fullName": "Mitra Audit Production",
+    "phone": "081298765432",
+    "email": "aff_audit_1791889274826@example.com",
+    "promotionChannel": "Status WhatsApp & TikTok",
+    "status": "APPROVED",
+    "referralCode": "TS-MITRAAUD33",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$964e8a1fcc70a3386f72753d1a2d99dc$7c24c504cb78f787192388c9bbe50140452c733905c30689783dd7a35c30c38ee8a3bb48eec9932f46c25fca4c6a29c3c6218afac04d216d4239aa9a7b7d8c53",
+    "createdAt": "2026-10-13T11:01:14.897Z"
+  },
+  {
+    "id": "aff_1791897177862_gepg",
+    "fullName": "Mitra Audit Production",
+    "phone": "081298765432",
+    "email": "aff_audit_1791897177794@example.com",
+    "promotionChannel": "Status WhatsApp & TikTok",
+    "status": "APPROVED",
+    "referralCode": "TS-MITRAAUD70",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$13a3779692a1ee6ec426816555a58691$5062d1ccf282e4b1f310353aa975f066c244660998ec2fb5827f74529c92453b31de0be35c15be1e53f47d84194103daf1346ab4092a2c22efb0ef037bab3ebc",
+    "createdAt": "2026-10-13T13:12:57.862Z"
+  },
+  {
+    "id": "aff_1791897290568_lox9",
+    "fullName": "Mitra Audit Production",
+    "phone": "081298765432",
+    "email": "aff_audit_1791897290500@example.com",
+    "promotionChannel": "Status WhatsApp & TikTok",
+    "status": "APPROVED",
+    "referralCode": "TS-MITRAAUD92",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$9b50833d475219481753097da75b6665$c3fafcec69cb65f480a50dd3ab5326d8a89799a4e0d261ce1739dd1e0fcfcea7a8889a26dded919dbcaec12c6ff5880544200b2b56546947044fd6f6bb1381ef",
+    "createdAt": "2026-10-13T13:14:50.568Z"
+  },
+  {
+    "id": "aff_1791895673676_mk1o",
+    "fullName": "Mitra Audit Production",
+    "phone": "081298765432",
+    "email": "aff_audit_1791895673598@example.com",
+    "promotionChannel": "Status WhatsApp & TikTok",
+    "status": "APPROVED",
+    "referralCode": "TS-MITRAAUD86",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$8b2df46d89fe0a59d202ff8bbb4514a9$80456507789884aee249ea6edff6d50df2e04d72128257c43071da4d562eb8076a5b05be25fa9e3498f430fa1af0d225fed7ed7013ccc073bea635f87ddbb2a4",
+    "createdAt": "2026-10-13T12:47:53.676Z"
+  },
+  {
+    "id": "aff_1791895479131_ole6",
+    "fullName": "Mitra Audit Production",
+    "phone": "081298765432",
+    "email": "aff_audit_1791895479048@example.com",
+    "promotionChannel": "Status WhatsApp & TikTok",
+    "status": "APPROVED",
+    "referralCode": "TS-MITRAAUD17",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$28a802605127ad9943891801c7441ae6$d9b10abf2dc02e16f66f17e616187348b14641bdad5e3df5c7c00082a47099bf849c5803335a8600e6360dac018be5f8662ae08ae9b44e6e501b7adc01119484",
+    "createdAt": "2026-10-13T12:44:39.131Z"
+  },
+  {
+    "id": "aff_1791894927034_3t3x",
+    "fullName": "Mitra Audit Production",
+    "phone": "081298765432",
+    "email": "aff_audit_1791894926953@example.com",
+    "promotionChannel": "Status WhatsApp & TikTok",
+    "status": "APPROVED",
+    "referralCode": "TS-MITRAAUD28",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$31c784794372a587426c2330afd1738e$7869b9c64fd4dc7b35df53bc8281de92b2585aeaf971a88b8d606d1696f146c0d7874936c6a1cd6c52a118c8c96c3ac89ea1027935472825292ca32b47fd881d",
+    "createdAt": "2026-10-13T12:35:27.034Z"
+  },
+  {
+    "id": "aff_1791890722383_01lj",
+    "fullName": "Mitra Audit Production",
+    "phone": "081298765432",
+    "email": "aff_audit_1791890722292@example.com",
+    "promotionChannel": "Status WhatsApp & TikTok",
+    "status": "APPROVED",
+    "referralCode": "TS-MITRAAUD62",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$9f3478703812ad74579b69aad5384c10$31cb3b837b6667cf9247f15a97744c9d9f5341131c85686473775ab879aba73cfab407a6f8cf663f490b0bd8a2094e2a32fdb2f680a10b88e53d01af50f4a9ed",
+    "createdAt": "2026-10-13T11:25:22.383Z"
+  },
+  {
+    "id": "aff_1791893583590_y2el",
+    "fullName": "Mitra Audit Production",
+    "phone": "081298765432",
+    "email": "aff_audit_1791893583500@example.com",
+    "promotionChannel": "Status WhatsApp & TikTok",
+    "status": "APPROVED",
+    "referralCode": "TS-MITRAAUD44",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$84c644a7316c8432f0c70e45095e297d$8970adb976a260e3518c8bff2d4933e5bdc836732040d04b67f0647977654b90e2862baf9d753ce3903646c2c5a4c68fa695aac0411c8da9f2de290a446f9c18",
+    "createdAt": "2026-10-13T12:13:03.591Z"
+  },
+  {
+    "id": "aff_1791891421619_gzei",
+    "fullName": "Mitra Audit Production",
+    "phone": "081298765432",
+    "email": "aff_audit_1791891421523@example.com",
+    "promotionChannel": "Status WhatsApp & TikTok",
+    "status": "APPROVED",
+    "referralCode": "TS-MITRAAUD71",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$58c7118d8cebc2890e44b8dc2e925db9$f05810e72e9ec719b831a93f8b5f4a6aaccd6aed0a4e32097f30856248981f1ddef65edfd131ff97d504d2aa37277896f75d2796c754295a0bcc475da22082b6",
+    "createdAt": "2026-10-13T11:37:01.619Z"
+  },
+  {
+    "id": "aff_1791891275520_hjuc",
+    "fullName": "Mitra Audit Production",
+    "phone": "081298765432",
+    "email": "aff_audit_1791891275452@example.com",
+    "promotionChannel": "Status WhatsApp & TikTok",
+    "status": "APPROVED",
+    "referralCode": "TS-MITRAAUD97",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$0c37407fa5c6b208b15b8cc3877e116a$1dfc0afecb6c52eaefeb0e2afbe660cec3e52eeb2e37c1ca2a147e028b358017b67d4c9423ce30e04c1b2cb4b995872039a1592453bc1ff67cd6f23909ebfad3",
+    "createdAt": "2026-10-13T11:34:35.520Z"
+  },
+  {
     "id": "aff_1791877975604_ghun",
     "fullName": "Test Affiliate PWA",
     "phone": "081234567899",
@@ -22,26 +154,15 @@
     "createdAt": "2026-10-13T07:52:55.604Z"
   },
   {
-    "id": "aff_1791887202189_gkvt",
+    "id": "aff_1791889506144_2mom",
     "fullName": "Test Affiliate PWA",
     "phone": "081234567899",
     "email": "testaff01@test.com",
     "promotionChannel": "WhatsApp",
     "status": "APPROVED",
-    "referralCode": "TS-TESTAFFI10",
-    "passwordHash": "$scrypt$N=16384,r=8,p=1$2e1fab3fc4b340004a8d2e4eadbf6c5b$b7d3fd37a040a35b3c5a5cf580b02c05dda5bd8cc596d860f8d12c19fc35d71eff5865bb7654f8ab172d8c0878c489327a9d77bd01f7e1a7b969622ec75b9886",
-    "createdAt": "2026-10-13T10:26:42.189Z"
-  },
-  {
-    "id": "aff_1791877996510_zywh",
-    "fullName": "Test Affiliate PWA",
-    "phone": "081234567899",
-    "email": "testaff01@test.com",
-    "promotionChannel": "WhatsApp",
-    "status": "APPROVED",
-    "referralCode": "TS-TESTAFFI42",
-    "passwordHash": "b46e7dcdc45244c38abcd68d7cfd8683ae008d4fbbc2effc93e6b00d979e7095",
-    "createdAt": "2026-10-13T07:53:16.510Z"
+    "referralCode": "TS-TESTAFFI51",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$eb0c8ef2d7fd025d201496d75db56b13$e6a533548173b2c0c9250ab5ea61e293bca9786be9b5106ae892aec9eea7365eb64cb3fb76ac95f862522b6cddd260a4dbb293e3eb671e63b013d5bb8cd51ab6",
+    "createdAt": "2026-10-13T11:05:06.144Z"
   },
   {
     "id": "aff_1791885969123_duch",
@@ -55,6 +176,127 @@
     "createdAt": "2026-10-13T10:06:09.123Z"
   },
   {
+    "id": "aff_1791889262872_19sd",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI71",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$0190734075fd5bb3affb2ff651708534$417cfd0923340ac7586b3447aa5d9db86e6bc2eb4f3c061da3ecafdf223a72c5ae7c414e3433f160d10b6676e2bd57ed10ee76b022612664ef9e16192b65d0a4",
+    "createdAt": "2026-10-13T11:01:02.872Z"
+  },
+  {
+    "id": "aff_1791888900224_4i3w",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI41",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$c4ec7e0813ab628b2adc58d4fba07796$df2acfc8a4eea63fcbff32812fa7e5badbbf614a24b237085662b1e690d3ae03434d603724504110181a73d599fae3bd6d97a5d5b5947c1d1f601925e641fb1c",
+    "createdAt": "2026-10-13T10:55:00.224Z"
+  },
+  {
+    "id": "aff_1791897193729_ospp",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI34",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$fd3df145c6228af7efaa80e3e8394f7b$46278a60bfca6ec816e564cff97c1e41b3235e946f02bc59feee46f7f3b692079b9919d5d2b2604d087961fa58e631e576ab6b1f292d0272d9deadbaee52c30a",
+    "createdAt": "2026-10-13T13:13:13.729Z"
+  },
+  {
+    "id": "aff_1791895681479_ys6k",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI67",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$ba5767f1ae935b3025634c8d4c047216$330fdf67d91614cc4e5e929cb8b0fe0722e4ae09130028b95efabc9c2372889fa73aeed97022653b8f904b4fd05c6fe794379b6330f7f3c3e27f9100af81af08",
+    "createdAt": "2026-10-13T12:48:01.479Z"
+  },
+  {
+    "id": "aff_1791877996510_zywh",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI42",
+    "passwordHash": "b46e7dcdc45244c38abcd68d7cfd8683ae008d4fbbc2effc93e6b00d979e7095",
+    "createdAt": "2026-10-13T07:53:16.510Z"
+  },
+  {
+    "id": "aff_1791894918889_tdlp",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI50",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$97b0a510d7cd8ff491f8c84c09a9f2b0$e89c3cbd044abd725561d4d869273610d7438b0a6f84861cedc1df0352ef5c7b7729fc781ec4a8ff532825d7155648908a3763ce20077d1acc3d8f375f647b43",
+    "createdAt": "2026-10-13T12:35:18.889Z"
+  },
+  {
+    "id": "aff_1791890714336_jlcv",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI31",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$9ba4bec5b5f311df116f575807a89c90$cb2ed2b54a527abbdfde34591050025160fc5032b31439089809ae2d9d1dbe56820ae15c66c54ab4b3663025077e747342c61442a7021772db251277778c053d",
+    "createdAt": "2026-10-13T11:25:14.336Z"
+  },
+  {
+    "id": "aff_1791893571887_g31w",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI91",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$044a6a1b260ebaa14367636b138bd7a1$f960818e456b44183bdb505b1f3a37c38f036efcdaaf3aff5a3c123233347f56c452f7367537aae79df07ba382d432173a8cdc9f8489cfca1a98125d9d7d4d9e",
+    "createdAt": "2026-10-13T12:12:51.887Z"
+  },
+  {
+    "id": "aff_1791891413038_mnph",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI10",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$0f9dd80a68a17083f7c5d6c8e69f370c$3ae1a41740c2984342078061dc94da1eeaa139225fbfb3fefe14a8f69cb2fa3014d4c763d6df0715209e37207e61fb024d62df2879c21b5ebebbe9e005d07ea3",
+    "createdAt": "2026-10-13T11:36:53.038Z"
+  },
+  {
+    "id": "aff_1791887202189_gkvt",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI10",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$2e1fab3fc4b340004a8d2e4eadbf6c5b$b7d3fd37a040a35b3c5a5cf580b02c05dda5bd8cc596d860f8d12c19fc35d71eff5865bb7654f8ab172d8c0878c489327a9d77bd01f7e1a7b969622ec75b9886",
+    "createdAt": "2026-10-13T10:26:42.189Z"
+  },
+  {
+    "id": "aff_1791891265269_lmw8",
+    "fullName": "Test Affiliate PWA",
+    "phone": "081234567899",
+    "email": "testaff01@test.com",
+    "promotionChannel": "WhatsApp",
+    "status": "APPROVED",
+    "referralCode": "TS-TESTAFFI30",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$1a23a2ae26acc8b539bac4dfe6ecfb1f$a8a6e11ba589ced7f9e9d6ba489909a7221b2ebb86f1f751b2e7b0d3486f11e3d65f9a87e1602f2dfa7039c2c8fd357210f68afef651f6cd322ba32b331a53dd",
+    "createdAt": "2026-10-13T11:34:25.269Z"
+  },
+  {
     "id": "aff_1791885900877_hxj0",
     "fullName": "Budi Santoso",
     "phone": "081234567888",
@@ -64,6 +306,28 @@
     "referralCode": "TS-BUDISANT81",
     "passwordHash": "eaacc312c8452653115aa944760bd7a858d98833c4dcab69ea7d3269ac2242b4",
     "createdAt": "2026-10-13T10:05:00.877Z"
+  },
+  {
+    "id": "aff_1791889269606_ny6l",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791889269529@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT75",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$8cc8bf5440fe5780deba65b327084bce$d079c5f75334e62c2a3d248cf20e5361fdd5e9875759bd14baa06057d76b813b580d3b877e9d8a2f055e78239469ee42bbeb84a0c583609730d86c470ded730a",
+    "createdAt": "2026-10-13T11:01:09.606Z"
+  },
+  {
+    "id": "aff_1791888907971_7y0i",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791888907896@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT60",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$ec52052ebcb8c6b5ff577fd540429246$3008b0488a46564d6c2929ce3534270fb25bcefe3c5c15198603fb1cbdd9053cd169aaa1af928a6ae937b8d672dda8a8dbca1c8184bc8741befb2904246ee81b",
+    "createdAt": "2026-10-13T10:55:07.971Z"
   },
   {
     "id": "aff_1791887193861_0h3x",
@@ -88,6 +352,28 @@
     "createdAt": "2026-10-13T10:22:45.465Z"
   },
   {
+    "id": "aff_1791897193337_x3wd",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791897193261@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT99",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$118d73899054f9e14e705a269e914b5c$a48bf72515471f5703b87e471d9b382aff6e51f12314eb85f1d8be54d4d94ab2c239f102e1f6f7a20098720f3ac3bef7a5e3b8b4ebd2827b11877e8b75da547e",
+    "createdAt": "2026-10-13T13:13:13.337Z"
+  },
+  {
+    "id": "aff_1791895681132_28ka",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791895681054@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT79",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$3945d9a7f3c64d8e9afff0505a4dc601$d19f975f4e9e77313c4e2a320cc802914e57ca976256c3b12ee9134563521ee4336784225f7dcaa41fd9f9460a249e0059b12493700ffda3c4251556f80cdcd0",
+    "createdAt": "2026-10-13T12:48:01.132Z"
+  },
+  {
     "id": "aff_1791885962402_v2xm",
     "fullName": "Budi Santoso",
     "phone": "081234567888",
@@ -99,6 +385,50 @@
     "createdAt": "2026-10-13T10:06:02.402Z"
   },
   {
+    "id": "aff_1791894923187_8hf4",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791894923108@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT32",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$16b511d036c5d68489d1f5f052945a81$c08ddcee1f914314a29288e8d7e7c5ce9d0be1c81949d6c111522ae182d323b5e2e8cc07ee17f27172b6470dfd45bdfe63cf756836c7a4f2335f6fdc1919b017",
+    "createdAt": "2026-10-13T12:35:23.187Z"
+  },
+  {
+    "id": "aff_1791890718750_43fr",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791890718673@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT25",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$e6070e3d6be4c240df9f8e4ce52a2288$3a96378f3f01ada69474b925ac22251b9eaf092f4ab1f01c1c6214e5cf07ebf61ef0a60409bcdba1ec8cb2e36db42b5c2479070ef3ea3374c3f5031db1dbad2c",
+    "createdAt": "2026-10-13T11:25:18.750Z"
+  },
+  {
+    "id": "aff_1791893577220_sboa",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791893577151@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT57",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$6eda1f5c10e190c2cbe555d75c623ed8$af09eacf0e490a26307b2f4255104e8bbc86972f1e66b1ce18e19ea8906acb83a0a92254030a2f548eeea36519f302142ddbe15b4f4c477b7baa273811d4ede5",
+    "createdAt": "2026-10-13T12:12:57.220Z"
+  },
+  {
+    "id": "aff_1791891417437_szq5",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791891417352@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT92",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$4f58f06697d90f320c9c5482ed515d57$716dccbe6cb9406b79d648aaddc919a426d48e215021c2ce0c8a755d3de8847e4cc7eb19fb554f5d6d844bb81f84c658446f5c1815d6e86b1b15accb225f18f0",
+    "createdAt": "2026-10-13T11:36:57.437Z"
+  },
+  {
     "id": "aff_1791885910618_wwha",
     "fullName": "Budi Santoso",
     "phone": "081234567888",
@@ -108,5 +438,225 @@
     "referralCode": "TS-BUDISANT92",
     "passwordHash": "$scrypt$N=16384,r=8,p=1$97c3582450ec360433e9d2f76de88972$470df04daa0a82a4178bbedad7c47c2fb20fff69f8b2a1f5c391da2e1a2a589e278e2b0308bf5c02fd3f783a6ac6251d34b127d38f0fc2218dd4101570cdc73e",
     "createdAt": "2026-10-13T10:05:10.618Z"
+  },
+  {
+    "id": "aff_1791891270739_9s62",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791891270661@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT56",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$da50d4b8c854bb1452174d32ad2edc72$1b01a5c5f9da4bef08051bf85f08b8158179ae7f492a0a6233d377abda6d4f83500f2b36d22ccb1ed2b16b742b7cb65f6b388094ca8c39b3b9501b7f9d8e204f",
+    "createdAt": "2026-10-13T11:34:30.739Z"
+  },
+  {
+    "id": "aff_1791889512118_xyx7",
+    "fullName": "Budi Santoso",
+    "phone": "081234567888",
+    "email": "aff_1791889512039@test.com",
+    "promotionChannel": "WhatsApp Status",
+    "status": "APPROVED",
+    "referralCode": "TS-BUDISANT66",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$d08b34c900e6134dba765273310ee00f$6229758a7e2b7bea6b2735d6ec108a4d8cd7d87b080f1c699a125f6f1d617b98ce2f9a15816fed782190739b977224dd20a31717f43db3bc09bfc15b8780d52b",
+    "createdAt": "2026-10-13T11:05:12.118Z"
+  },
+  {
+    "id": "aff_1791891332702_asg1",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791891332652@example.com",
+    "promotionChannel": "Status WhatsApp & Grup",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT72",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$b53991c8da8ba3a32527c6f02d340309$6e802be74aa438388d0409639fc769ef891d9000fbc40575e9882313d211304e30bcdc8f6cc9714931a1d7df61382f5cd1fc6c317a11f7277e553236f8ec0773",
+    "createdAt": "2026-10-13T11:35:32.702Z"
+  },
+  {
+    "id": "aff_1791898839830_7oot",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791898839759@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT54",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$6546e4b962cc0a56a2b2df9829b8c0c2$7528de2a5b4765c7fbf67f0238b67883976bb16c1535efcc48ac47020dc629ec8409aab5aeab08c35405c4ce1854a3d9854faee915c67ea95eed3e76893e266a",
+    "createdAt": "2026-10-13T13:40:39.830Z"
+  },
+  {
+    "id": "aff_1791898400891_axjx",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791898400828@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT61",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$57810e0dc9423e4ff656804a5bb31d73$ebcef07a0be029ceef15e7c9daae5d78e943c3c0d3023b68da3a98719818de7137e2e5f2729d83cb7e03484b6dd49e3a5a3aeb46b9316e194b6de8d3d8a36b46",
+    "createdAt": "2026-10-13T13:33:20.891Z"
+  },
+  {
+    "id": "aff_1791898036524_p5bb",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791898036458@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT46",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$bd501750112f74b18cd12710603f013e$c5fd84d1b67c05e262b978c4e55debe1721e83b5ceb15a6d38283a61213c95a8773070a080a7e4dd9f1fa1d3fbf6e440023f0cd409c17e6c07e49bc17c37694b",
+    "createdAt": "2026-10-13T13:27:16.524Z"
+  },
+  {
+    "id": "aff_1791898022260_7vpk",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791898022189@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT68",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$39809a365c3161514ea9b1f7f41fc487$a98c2fb7af37522ed96f211bd98b72f35761a365229e5f3f3b68a36725f966b6847c7522907541be691508588018b336558bb81d0e07a6e8a97fded2a3728b74",
+    "createdAt": "2026-10-13T13:27:02.260Z"
+  },
+  {
+    "id": "aff_1791897288935_yj9a",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791897288884@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT31",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$41ee0bce5a646e515879ae4295f1cdf0$19f9a8f4499e44a649c33ee6eb23c2cefb4d1e3b1e90104c9da92120dc7088b070c1d03d091f4472a70370cb866705c324ec0b3fa13c478962bec61ccfc828c3",
+    "createdAt": "2026-10-13T13:14:48.935Z"
+  },
+  {
+    "id": "aff_1791895667979_x2ra",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791895667917@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT65",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$b4918d3bf4311e4da66c393e14efca10$695153ccec49b1d8ccc2ff5d763b9eda95659d1e5cdaaed91b5272c984e43e885a5d884a78e90796bbf52447e68a78b87b3834f9f6b00f716fd51536bb5b8664",
+    "createdAt": "2026-10-13T12:47:47.979Z"
+  },
+  {
+    "id": "aff_1791891406550_g9ts",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791891406470@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT65",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$29e77d77325b8bc5cb6bca8b7aeb8cb1$64a42661c4baef96f89334e13d5565a9339cf66dac011ddddf6f8853b14af7b18c380952a02415e4ea67244334d08139e32b8387e99cce1d344d109427803c80",
+    "createdAt": "2026-10-13T11:36:46.550Z"
+  },
+  {
+    "id": "aff_1791895474183_rmg5",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791895474109@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT88",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$060b04f4bce626f7c45bca490c05fdab$087df6c6c8766e0f381f34f7742ad64fcde6b3b262c02b7c4a775334d8e31185c18f0ace1fa4e959bfa8bdc5e90ccee34f8acf3ad46603d9bc6707f6f7a089b8",
+    "createdAt": "2026-10-13T12:44:34.183Z"
+  },
+  {
+    "id": "aff_1791894905380_7f1i",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791894905303@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT19",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$c52f26c82bee5d3706031f2f3855d717$7a7bc65985732a1efc57ee3868a65cbc0a2317da1e982fc78f97b48aaff3e5e6b5efd322c05efe3a12e50c499ead9a9bb727c6f91e3512857510dec740a46e0c",
+    "createdAt": "2026-10-13T12:35:05.380Z"
+  },
+  {
+    "id": "aff_1791894794606_lljt",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791894794538@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT12",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$9b7d317ab52dcee4be0dc6c75bbd90bd$46bb482d89268c5e4ac2ff6325e1dd653a9f01ae0bf2b80af6fc197c5ab13b8f352fed8061c7a7cdeb07799a8d97472dd144989636f2f63ea80e8e349e178f37",
+    "createdAt": "2026-10-13T12:33:14.606Z"
+  },
+  {
+    "id": "aff_1791893567008_8yi3",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791893566929@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT45",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$3ea05111bc9d7d577e82c18077d7ea4b$a091cd0f392809fabdb743751c2f0b051fd6c527a1ffe3882e0ccc64f314109bbeca9f396ed7f74620ea77cedf0a57beabe702dbee94ccf94750503e8afa2f7b",
+    "createdAt": "2026-10-13T12:12:47.008Z"
+  },
+  {
+    "id": "aff_1791891388775_r150",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791891388725@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT95",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$2ad85252efd8559e8f67f2fe0737099d$b141461b4e370d5e78898a1b62047d08c49a00a7b4fb972fad0d7c3a99c3554056d68c4c370fb6c058f95e5675db3643b7af453cc93a1ccc72dce27060b2d6f4",
+    "createdAt": "2026-10-13T11:36:28.775Z"
+  },
+  {
+    "id": "aff_1791897069618_rc8l",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791897069530@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT69",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$31f83a57b135a9e29d7519671dc0a800$ecc8924aa3be33c3a0be61d88fa40d62c98bd940ee9a646a2fe86d9ee8e448beeefcea19f0447e56ce194bfc24e4094607e10edb8744c160dd3cb88572e5d572",
+    "createdAt": "2026-10-13T13:11:09.618Z"
+  },
+  {
+    "id": "aff_1791897092892_cltk",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791897092819@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT48",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$bed7106509b4db0e88ca68b0e26e5290$b477ee4a7ed74213e529ee4158565c8e5a7b694415cb04f05bb5afe51651d24f1e1d521edcd6b34a883bd52edcc4ac14765a355945ccdf3ec1b026d91adf5ec2",
+    "createdAt": "2026-10-13T13:11:32.892Z"
+  },
+  {
+    "id": "aff_1791897139424_jk00",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791897139348@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT33",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$3b73781d44afe7af7d1b16b1ae67309b$14fe0550499833d5f9c0fef75e8763bf4bc3164abbf2d52ff2c7fc3ad2bb994b05f4f53484a8b50445a0ff3c068e55285224ce7be6c7a2b1a6d1052116d74219",
+    "createdAt": "2026-10-13T13:12:19.424Z"
+  },
+  {
+    "id": "aff_1791897162527_0idj",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791897162480@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT70",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$b87d36b140a5335a4fffd8040e07f349$48f5be3f4efa13e3a1ba3dd81048bb18c704812e0fb80709019c9e882422f991ad1a152f197a226b79cd1d6d27dc8810bb2723a182e3c523b0fd530de364d0df",
+    "createdAt": "2026-10-13T13:12:42.527Z"
+  },
+  {
+    "id": "aff_1791897816981_go9c",
+    "fullName": "Affiliate Audit Tester",
+    "phone": "081255556666",
+    "email": "aff_1791897816909@example.com",
+    "promotionChannel": "Instagram",
+    "status": "APPROVED",
+    "referralCode": "TS-AFFILIAT28",
+    "passwordHash": "$scrypt$N=16384,r=8,p=1$1f7b75e9009f53beed96d78ea42a7064$a19e5ae3562e0ef4f02d08836a5197ae34d0537c6c3bc4870c5d00ef1a5b2630df8ade8c081cca0115fd55a859c0c9e63c78b818788c822a929aceef2aa9d58a",
+    "createdAt": "2026-10-13T13:23:36.981Z"
   }
 ]
